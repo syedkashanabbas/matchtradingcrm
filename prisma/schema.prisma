@@ -1,0 +1,337 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 String           @id @default(uuid())
+  email              String           @unique
+  password           String
+  firstName          String
+  lastName           String
+  role               Role             @default(CLIENT)
+  isActive           Boolean          @default(true)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  status             ClientStatus     @default(NEW)
+  subscriptionEnd    DateTime?
+  company            String?
+  emailVerified      Boolean          @default(false)
+  gracePeriodEnd     DateTime?
+  phone              String?
+  stripeCustomerId   String?
+  onboardingProgress String           @default("not_started")
+  referralCode       String?          @unique
+  referredByCode     String?
+  referredByUserId   String?
+  registrationSource String?          @default("organic")
+  alerts             Alert[]
+  apiKeys            ApiKey[]
+  auditLogs          AuditEvent[]
+  brokerAccounts     BrokerAccount[]
+  networkEvents      NetworkEvent[]   @relation("NetworkEventUser")
+  notifications      Notification[]
+  onboardingSteps    OnboardingStep[]
+  propAccounts       PropAccount[]
+  subscriptions      Subscription[]
+  referredBy         User?            @relation("UserReferrals", fields: [referredByUserId], references: [id])
+  referrals          User[]           @relation("UserReferrals")
+  vpsConfigs         VpsConfig[]
+}
+
+model Subscription {
+  id                   String             @id @default(uuid())
+  userId               String
+  stripeSubscriptionId String             @unique
+  stripeCustomerId     String
+  plan                 PlanType
+  status               SubscriptionStatus
+  currentPeriodStart   DateTime
+  currentPeriodEnd     DateTime
+  cancelAtPeriodEnd    Boolean            @default(false)
+  gracePeriodEnd       DateTime?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+  user                 User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([stripeSubscriptionId])
+}
+
+model ApiKey {
+  id         String         @id @default(uuid())
+  name       String
+  userId     String
+  createdAt  DateTime       @default(now())
+  expiresAt  DateTime?
+  hashedKey  String         @unique
+  isActive   Boolean        @default(true)
+  lastUsedAt DateTime?
+  prefix     String         @default(cuid())
+  updatedAt  DateTime       @updatedAt
+  usageCount Int            @default(0)
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  devices    ApiKeyDevice[]
+
+  @@index([userId])
+  @@index([hashedKey])
+}
+
+model ApiKeyDevice {
+  id           String   @id @default(uuid())
+  apiKeyId     String
+  fingerprint  String   @unique
+  accountLogin String?
+  brokerServer String?
+  terminalPath String?
+  computerName String?
+  eaVersion    String?
+  isActive     Boolean  @default(true)
+  lastSeenAt   DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  apiKey       ApiKey   @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
+
+  @@index([apiKeyId])
+  @@index([fingerprint])
+}
+
+model VpsConfig {
+  id            String   @id @default(uuid())
+  userId        String
+  provider      String
+  ipAddress     String   @db.Inet
+  sshUsername   String   @default("root")
+  sshPassword   String
+  panelUrl      String?
+  panelUsername String?
+  panelPassword String?
+  status        String   @default("review")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model BrokerAccount {
+  id                   String   @id @default(uuid())
+  userId               String
+  brokerName           String
+  mt5AccountNumber     String
+  mt5Password          String
+  mt5Server            String
+  brokerPortalPassword String?
+  status               String   @default("review")
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model PropAccount {
+  id                 String    @id @default(uuid())
+  userId             String
+  firmName           String
+  mt5AccountNumber   String
+  mt5Password        String
+  mt5Server          String
+  phase              PropPhase @default(CHALLENGE)
+  isActive           Boolean   @default(true)
+  archivedAt         DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  status             String    @default("review")
+  ftmoCreditDetail   String?
+  ftmoAccountDetail  String?
+  ftmoUserName       String?
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model EaConfig {
+  id           String          @id @default(uuid())
+  version      String          @unique
+  config       Json
+  schema       Json
+  minEaVersion String?
+  signature    String?
+  isActive     Boolean         @default(true)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  history      ConfigHistory[]
+}
+
+model ConfigHistory {
+  id        String   @id @default(uuid())
+  configId  String
+  changes   Json
+  changedBy String?
+  changedAt DateTime @default(now())
+  config    EaConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+
+  @@index([configId])
+}
+
+model Notification {
+  id        String        @id @default(uuid())
+  userId    String
+  title     String
+  message   String
+  isRead    Boolean       @default(false)
+  createdAt DateTime      @default(now())
+  channels  String[]      @default(["in_app"])
+  severity  AlertSeverity @default(MEDIUM)
+  type      AlertType
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isRead])
+}
+
+model AuditEvent {
+  id        String        @id @default(uuid())
+  userId    String?
+  action    String
+  resource  String
+  details   Json?
+  ipAddress String?       @db.Inet
+  userAgent String?
+  timestamp DateTime      @default(now())
+  severity  AuditSeverity @default(MEDIUM)
+  user      User?         @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([action])
+  @@index([timestamp])
+}
+
+model OnboardingStep {
+  id          String               @id @default(uuid())
+  userId      String
+  stepId      String
+  status      OnboardingStepStatus @default(PENDING)
+  completedAt DateTime?
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  user        User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, stepId])
+  @@index([userId])
+}
+
+model Alert {
+  id        String        @id @default(uuid())
+  userId    String
+  type      AlertType
+  title     String
+  message   String
+  severity  AlertSeverity @default(MEDIUM)
+  isRead    Boolean       @default(false)
+  channels  String[]      @default(["in_app"])
+  metadata  Json?
+  createdAt DateTime      @default(now())
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([type])
+  @@index([isRead])
+}
+
+model NetworkEvent {
+  id            String   @id @default(uuid())
+  userId        String
+  eventType     String
+  relatedUserId String?
+  message       String
+  createdAt     DateTime @default(now())
+  user          User     @relation("NetworkEventUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([eventType])
+  @@index([createdAt])
+}
+
+enum Role {
+  ADMIN
+  MANAGER
+  CLIENT
+}
+
+enum ClientStatus {
+  NEW
+  ONBOARDING
+  ACTIVE
+  SUSPENDED
+  INACTIVE
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELED
+  PAST_DUE
+  UNPAID
+  TRIALING
+}
+
+enum PlanType {
+  FREE
+  PRO
+  ENTERPRISE
+}
+
+enum OnboardingStepStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+enum AuditSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum AlertType {
+  PAYMENT_FAILURE
+  CONFIG_UPDATE
+  EA_CHECK_FAILED
+  ACCOUNT_CHANGE
+  ADMIN_ACTION
+  SUBSCRIPTION_EXPIRED
+  DEVICE_LIMIT_EXCEEDED
+}
+
+enum AlertSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model PasswordResetOTP {
+  id        String   @id @default(uuid())
+  email     String
+  otp       String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  isUsed    Boolean  @default(false)
+
+  @@unique([email])
+  @@index([email])
+  @@index([expiresAt])
+}
+
+enum PropPhase {
+  CHALLENGE
+  FUNDED
+  ARCHIVED
+}
