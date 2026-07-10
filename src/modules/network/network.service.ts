@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { TreeNode } from '../../utils/network.utils';
-import { generateReferralCode, buildTreeFromFlat, checkAndCreateMilestone, getNetworkStats } from '../../utils/network.utils';
+import { assertNoSponsorCycle, generateReferralCode, buildTreeFromFlat, checkAndCreateMilestone, getNetworkStats } from '../../utils/network.utils';
 
 export class NetworkService {
   constructor(private prisma: PrismaClient) {}
@@ -23,10 +23,9 @@ export class NetworkService {
     // For now, returning 0 as placeholder
     const linkClicks = 0;
 
-    const baseUrl = process.env.NODE_ENV === 'production' 
-      ? 'https://app.exonoma.ai' 
-      : 'http://localhost:3000';
-    
+    // D7: referral base URL comes from env, never hardcoded
+    const baseUrl = process.env.REFERRAL_BASE_URL || process.env.CLIENT_URL || 'http://localhost:3000';
+
     return {
       referralCode: user.referralCode,
       referralLink: `${baseUrl}/join?ref=${user.referralCode}`,
@@ -295,6 +294,10 @@ export class NetworkService {
       });
 
       if (referrer) {
+        // Anti-cycle validation (spec v1.1 task 4.5): defense in depth - a
+        // brand-new user has no descendants, but the invariant is cheap.
+        await assertNoSponsorCycle(this.prisma, userId, referrer.id);
+
         // Update new user with referral info
         await this.prisma.user.update({
           where: { id: userId },

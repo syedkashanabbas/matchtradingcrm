@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { AlertCircle, ArrowLeft, CheckCircle2 } from 'lucide-react';
 
 export function VerifyOTPForm() {
   const router = useRouter();
@@ -44,7 +45,7 @@ export function VerifyOTPForm() {
 
   const handleOtpChange = (index: number, value: string) => {
     if (value.length > 1) return; // Only allow single digit
-    
+
     const newOtp = [...otp];
     newOtp[index] = value;
     setOtp(newOtp);
@@ -70,7 +71,7 @@ export function VerifyOTPForm() {
     setIsLoading(true);
 
     const otpValue = otp.join('');
-    
+
     if (otpValue.length !== 6) {
       setError('Please enter all 6 digits');
       setIsLoading(false);
@@ -93,9 +94,10 @@ export function VerifyOTPForm() {
       }
 
       setSuccess('Code verified successfully');
-      
+
       // Redirect to reset password page after 1 second
       setTimeout(() => {
+        sessionStorage.setItem('resetOtp', otpValue);
         router.push('/reset-password');
       }, 1000);
 
@@ -140,29 +142,31 @@ export function VerifyOTPForm() {
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {error && (
-        <div className="rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-3 text-sm text-red-700 dark:text-red-400">
+        <div className="flex items-center gap-3 rounded-xl border border-destructive/20 bg-destructive/10 p-4 text-sm font-medium text-destructive">
+          <AlertCircle className="h-5 w-5 shrink-0" />
           {error}
         </div>
       )}
 
       {success && (
-        <div className="rounded-lg border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20 p-3 text-sm text-green-700 dark:text-green-400">
+        <div className="flex items-center gap-3 rounded-xl border border-success/25 bg-success/10 p-4 text-sm font-medium text-success">
+          <CheckCircle2 className="h-5 w-5 shrink-0" />
           {success}
         </div>
       )}
 
-      <div className="text-center">
-        <p className="text-sm text-muted-foreground mb-2">
-          We sent a 6-digit code to:
+      <div className="rounded-xl bg-muted/40 p-4 text-center">
+        <p className="mb-1 text-sm text-muted-foreground">
+          We sent a 6-digit code to
         </p>
         <p className="font-medium text-foreground">{email}</p>
       </div>
 
-      <div className="space-y-2">
-        <label className="block text-sm font-medium text-foreground text-center">
+      <div className="space-y-3">
+        <label className="block text-center text-sm font-medium text-foreground">
           Enter Verification Code
         </label>
-        <div className="flex justify-center gap-2">
+        <div className="flex justify-center gap-2.5">
           {otp.map((digit, index) => (
             <input
               key={index}
@@ -175,7 +179,7 @@ export function VerifyOTPForm() {
               onChange={(e) => handleOtpChange(index, e.target.value)}
               onKeyDown={(e) => handleKeyDown(index, e)}
               disabled={isLoading}
-              className="w-12 h-12 text-center text-lg font-semibold rounded-lg border border-input bg-background text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all disabled:opacity-50"
+              className="h-12 w-12 rounded-xl border border-input bg-background text-center text-lg font-semibold tabular-nums text-foreground transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50"
             />
           ))}
         </div>
@@ -183,10 +187,10 @@ export function VerifyOTPForm() {
 
       {timeLeft > 0 ? (
         <div className="text-center text-sm text-muted-foreground">
-          Code expires in {formatTime(timeLeft)}
+          Code expires in <span className="font-medium tabular-nums text-foreground">{formatTime(timeLeft)}</span>
         </div>
       ) : (
-        <div className="text-center text-sm text-red-600 dark:text-red-400">
+        <div className="text-center text-sm font-medium text-destructive">
           Code has expired
         </div>
       )}
@@ -194,33 +198,34 @@ export function VerifyOTPForm() {
       <button
         type="submit"
         disabled={isLoading || otp.join('').length !== 6}
-        className="w-full rounded-lg bg-primary px-4 py-2.5 font-medium text-primary-foreground transition-all hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+        className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/25 transition-all hover:bg-primary/90 hover:shadow-primary/30 disabled:cursor-not-allowed disabled:opacity-50"
       >
         {isLoading && (
-          <div className="h-4 w-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin" />
+          <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
         )}
         {isLoading ? 'Verifying...' : 'Verify Code'}
       </button>
 
-      <div className="text-center space-y-2">
+      <div className="space-y-2 text-center">
         <button
           type="button"
           onClick={handleResend}
           disabled={isLoading || timeLeft > 540} // Disable resend for first minute
-          className="text-sm text-muted-foreground hover:text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="text-sm text-muted-foreground transition-colors hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {timeLeft > 540 
+          {timeLeft > 540
             ? `Resend code in ${Math.floor((timeLeft - 540) / 60)}:${((timeLeft - 540) % 60).toString().padStart(2, '0')}`
             : "Didn't receive the code? Resend"
           }
         </button>
-        
+
         <div>
           <Link
             href="/forgot-password"
-            className="text-sm text-muted-foreground hover:text-primary transition-colors"
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-primary"
           >
-            ← Back to email entry
+            <ArrowLeft className="h-4 w-4" />
+            Back to email entry
           </Link>
         </div>
       </div>

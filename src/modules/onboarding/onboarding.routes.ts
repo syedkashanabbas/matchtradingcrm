@@ -1,24 +1,20 @@
 import { Router } from "express";
 import { authenticate } from "../../middleware/auth.middleware";
 import {
-  createVpsOnboarding,
   createBrokerOnboarding,
   createPropOnboarding,
-  createPlatformOnboarding,
-  createSubscriptionOnboarding,
-  getOnboardingStatus
+  getOnboardingStatus,
 } from "./onboarding.controller";
 
 const router = Router();
 
-// All onboarding endpoints require authentication
+// All onboarding endpoints require authentication.
+// The payment step is completed by the billing webhooks (Stripe / CoinGate),
+// not by a direct endpoint; the wizard starts checkout via /api/subscriptions.
 router.use(authenticate);
 
-router.get('/status', getOnboardingStatus);
-router.post('/vps', createVpsOnboarding);
-router.post('/broker', createBrokerOnboarding);
-router.post('/prop', createPropOnboarding);
-router.post('/platform', createPlatformOnboarding);
-router.post('/subscription', createSubscriptionOnboarding);
+router.get("/status", getOnboardingStatus);
+router.post("/broker", createBrokerOnboarding);
+router.post("/prop", createPropOnboarding);
 
 export default router;

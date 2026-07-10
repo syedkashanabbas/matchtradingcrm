@@ -105,73 +105,12 @@ export function generateSecureToken(length: number = 32): string {
   return crypto.randomBytes(length).toString('hex');
 }
 
-// Generate API key with prefix
-export function generateApiKey(): { key: string; prefix: string } {
-  const randomBytes = crypto.randomBytes(32).toString('hex');
-  const prefix = randomBytes.substring(0, 8).toUpperCase();
-  const key = `mt_${prefix}_${randomBytes}`;
-  
-  return { key, prefix };
-}
-
-// Generate device fingerprint
-export function generateDeviceFingerprint(deviceInfo: {
-  accountLogin: string;
-  brokerServer: string;
-  computerName: string;
-  eaVersion: string;
-}): string {
-  const fingerprintData = {
-    accountLogin: deviceInfo.accountLogin,
-    brokerServer: deviceInfo.brokerServer,
-    computerName: deviceInfo.computerName,
-    eaVersion: deviceInfo.eaVersion,
-  };
-  
-  const fingerprintString = JSON.stringify(fingerprintData, Object.keys(fingerprintData).sort());
-  return crypto.createHash('sha256').update(fingerprintString).digest('hex');
-}
-
-// Compare two device fingerprints (allowing for some variations)
-export function compareDeviceFingerprints(fp1: string, fp2: string, threshold: number = 0.9): boolean {
-  if (fp1 === fp2) return true;
-  
-  // Simple similarity check - in production, you might use more sophisticated algorithms
-  const similarity = calculateStringSimilarity(fp1, fp2);
-  return similarity >= threshold;
-}
-
-// Calculate string similarity (Levenshtein distance)
-function calculateStringSimilarity(str1: string, str2: string): number {
-  const matrix = [];
-  const len1 = str1.length;
-  const len2 = str2.length;
-  
-  for (let i = 0; i <= len2; i++) {
-    matrix[i] = [i];
-  }
-  
-  for (let j = 0; j <= len1; j++) {
-    matrix[0][j] = j;
-  }
-  
-  for (let i = 1; i <= len2; i++) {
-    for (let j = 1; j <= len1; j++) {
-      if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
-        matrix[i][j] = matrix[i - 1][j - 1];
-      } else {
-        matrix[i][j] = Math.min(
-          matrix[i - 1][j - 1] + 1,
-          matrix[i][j - 1] + 1,
-          matrix[i - 1][j] + 1
-        );
-      }
-    }
-  }
-  
-  const distance = matrix[len2][len1];
-  const maxLength = Math.max(len1, len2);
-  return maxLength > 0 ? (maxLength - distance) / maxLength : 1;
+// Mask a secret for API responses: never return plaintext credentials.
+// Shows only the last 2 characters, e.g. "••••••42".
+export function maskSecret(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const visible = value.slice(-2);
+  return `••••••${visible}`;
 }
 
 // Secure comparison to prevent timing attacks

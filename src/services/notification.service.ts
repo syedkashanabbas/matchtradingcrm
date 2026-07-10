@@ -281,30 +281,6 @@ export const createSubscriptionExpiredAlert = async (userId: string) => {
   );
 };
 
-export const createConfigUpdateAlert = async (userId: string, configVersion: string) => {
-  return createAlert(
-    userId,
-    "CONFIG_UPDATE",
-    "EA Configuration Updated",
-    `Your EA configuration has been updated to version ${configVersion}. Please restart your EA to apply the changes.`,
-    "MEDIUM",
-    ["in_app", "email"],
-    { configVersion }
-  );
-};
-
-export const createDeviceLimitExceededAlert = async (userId: string, currentDevices: number, maxDevices: number) => {
-  return createAlert(
-    userId,
-    "DEVICE_LIMIT_EXCEEDED",
-    "Device Limit Exceeded",
-    `You have reached the maximum number of devices (${maxDevices}). Please remove unused devices to add new ones.`,
-    "HIGH",
-    ["in_app", "email"],
-    { currentDevices, maxDevices }
-  );
-};
-
 export const createAccountChangeAlert = async (userId: string, changeType: string, details: any) => {
   return createAlert(
     userId,
@@ -329,14 +305,3 @@ export const createAdminActionAlert = async (userId: string, action: string, rea
   );
 };
 
-export const createEACheckFailedAlert = async (userId: string, error: string) => {
-  return createAlert(
-    userId,
-    "EA_CHECK_FAILED",
-    "EA Validation Failed",
-    `Your EA validation failed. Error: ${error}. Please check your configuration and try again.`,
-    "MEDIUM",
-    ["in_app"],
-    { error }
-  );
-};

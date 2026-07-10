@@ -4,26 +4,32 @@ import { useAuthContext } from '@/lib/auth-context';
 import { useAdmin } from '@/lib/admin-hook';
 import { LoadingSkeleton } from '@/components/shared/LoadingSkeleton';
 import { AdminStats } from '@/components/admin/AdminStats';
-import { UsersTable } from '@/components/admin/UsersTable';
 import { StatusDropdown } from '@/components/admin/StatusDropdown';
-import { BarChart3 } from 'lucide-react';
+import { Briefcase, Server } from 'lucide-react';
+
+const statusBadgeClass = (status: string) => {
+  switch ((status || '').toLowerCase()) {
+    case 'active':
+    case 'certified':
+      return 'bg-success/15 text-success border-success/25';
+    case 'review':
+      return 'bg-warning/15 text-warning border-warning/25';
+    case 'failed':
+      return 'bg-destructive/10 text-destructive border-destructive/20';
+    case 'archived':
+      return 'bg-muted text-muted-foreground border-border';
+    default:
+      return 'bg-primary/10 text-primary border-primary/20';
+  }
+};
 
 export default function AdminDashboardPage() {
   const { isLoading: authLoading } = useAuthContext();
-  const { stats, users, vpsData, brokersData, propFirmsData, isLoading: adminLoading, refreshData } = useAdmin();
-
-  const handleVpsStatusUpdate = (vpsId: string, newStatus: string) => {
-    // Update local VPS data immediately
-    const updatedVpsData = vpsData.map(vps => 
-      vps.id === vpsId ? { ...vps, status: newStatus } : vps
-    );
-    // Note: In a real implementation, you'd update the state here
-    console.log(`VPS ${vpsId} status updated to ${newStatus}`);
-  };
+  const { stats, users, brokersData, propFirmsData, isLoading: adminLoading, refreshData } = useAdmin();
 
   const handleBrokerStatusUpdate = (brokerId: string, newStatus: string) => {
     // Update local broker data immediately
-    const updatedBrokersData = brokersData.map(broker => 
+    const updatedBrokersData = brokersData.map(broker =>
       broker.id === brokerId ? { ...broker, status: newStatus } : broker
     );
     // Note: In a real implementation, you'd update the state here
@@ -32,7 +38,7 @@ export default function AdminDashboardPage() {
 
   const handlePropFirmStatusUpdate = (propId: string, newStatus: string) => {
     // Update local prop firm data immediately
-    const updatedPropFirmsData = propFirmsData.map(prop => 
+    const updatedPropFirmsData = propFirmsData.map(prop =>
       prop.id === propId ? { ...prop, status: newStatus } : prop
     );
     // Note: In a real implementation, you'd update the state here
@@ -51,155 +57,70 @@ export default function AdminDashboardPage() {
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-foreground flex items-center gap-3">
-          <div className="h-10 w-10 rounded-lg bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center">
-            <BarChart3 className="h-6 w-6 text-indigo-600 dark:text-indigo-400" />
-          </div>
-          Admin Dashboard
-        </h1>
-        <p className="text-muted-foreground mt-2">
-          System overview and user management
+      <div className="animate-fade-in-up">
+        <p className="eyebrow">Administration</p>
+        <h1 className="page-title">Control Room</h1>
+        <p className="page-subtitle">
+          Everything happening across users, accounts and services — at a glance.
         </p>
       </div>
 
       {/* Stats Cards */}
-      <AdminStats
-        totalUsers={stats.totalUsers}
-        activeUsers={stats.activeUsers}
-        newUsersThisMonth={stats.newUsersThisMonth}
-        suspendedUsers={stats.suspendedUsers}
-        totalSubscriptions={stats.totalSubscriptions}
-        activeSubscriptions={stats.activeSubscriptions}
-        totalVpsConfigs={stats.totalVpsConfigs}
-        activeVpsConfigs={stats.activeVpsConfigs}
-        totalBrokerAccounts={stats.totalBrokerAccounts}
-        activeBrokerAccounts={stats.activeBrokerAccounts}
-        totalPropAccounts={stats.totalPropAccounts}
-        activePropAccounts={stats.activePropAccounts}
-      />
-
-      {/* Users Table */}
-      {/* <div className="rounded-2xl border border-border bg-card p-6 shadow-soft-md">
-        <h2 className="text-xl font-semibold text-foreground mb-6">
-          User Management
-        </h2>
-        <UsersTable />
-      </div> */}
-
-      {/* VPS Table */}
-      <div className="rounded-2xl border border-border bg-card p-3 sm:p-4 lg:p-6 shadow-soft-md">
-        <h2 className="text-base sm:text-lg lg:text-xl font-semibold text-foreground mb-3 sm:mb-4 lg:mb-6">
-          VPS Configurations
-        </h2>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-border text-left text-xs sm:text-sm font-medium text-muted-foreground">
-                <th className="py-1.5 sm:py-2 lg:py-3 px-2 sm:px-3 lg:px-6 whitespace-nowrap">User</th>
-                <th className="py-1.5 sm:py-2 lg:py-3 px-2 sm:px-3 lg:px-6 whitespace-nowrap">Provider</th>
-                <th className="py-1.5 sm:py-2 lg:py-3 px-2 sm:px-3 lg:px-6 whitespace-nowrap">IP Address</th>
-                <th className="py-1.5 sm:py-2 lg:py-3 px-2 sm:px-3 lg:px-6 whitespace-nowrap">Status</th>
-                <th className="py-1.5 sm:py-2 lg:py-3 px-2 sm:px-3 lg:px-6 whitespace-nowrap">Action</th>
-                <th className="py-1.5 sm:py-2 lg:py-3 px-2 sm:px-3 lg:px-6 whitespace-nowrap">Created</th>
-              </tr>
-            </thead>
-            <tbody>
-              {vpsData.slice(0, 100).map((vps: any) => (
-                <tr key={vps.id} className="border-b border-border hover:bg-muted/50">
-                  <td className="py-2 sm:py-3 lg:py-4 px-2 sm:px-3 lg:px-6">
-                    <span className="font-medium text-xs sm:text-sm">{vps.user?.firstName} {vps.user?.lastName}</span>
-                  </td>
-                  <td className="py-2 sm:py-3 lg:py-4 px-2 sm:px-3 lg:px-6">
-                    <span className="inline-flex rounded-full bg-green-100 dark:bg-green-900/30 px-1.5 sm:px-2 lg:px-3 py-0.5 sm:py-1 text-[9px] sm:text-[10px] lg:text-xs font-medium text-green-700 dark:text-green-400">
-                      {vps.provider}
-                    </span>
-                  </td>
-                  <td className="py-2 sm:py-3 lg:py-4 px-2 sm:px-3 lg:px-6">
-                    <code className="text-[10px] sm:text-xs lg:text-sm font-mono break-all">{vps.ipAddress}</code>
-                  </td>
-                  <td className="py-2 sm:py-3 lg:py-4 px-2 sm:px-3 lg:px-6">
-                    <span 
-                      className={`inline-flex rounded-full px-1.5 sm:px-2 lg:px-3 py-0.5 sm:py-1 text-[9px] sm:text-[10px] lg:text-xs font-medium`}
-                      style={{ 
-                        backgroundColor: 
-                          vps.status === 'REVIEW' ? '#f59e0b' :
-                          vps.status === 'PENDING' ? '#3b82f6' :
-                          vps.status === 'CERTIFIED' ? '#10b981' :
-                          vps.status === 'ACTIVE' ? '#22c55e' : '#6b7280',
-                        color: vps.status === 'ACTIVE' ? 'white' : 'inherit'
-                      }}
-                    >
-                      {vps.status}
-                    </span>
-                  </td>
-                  <td className="py-2 sm:py-3 lg:py-4 px-2 sm:px-3 lg:px-6">
-                    <StatusDropdown
-                      currentStatus={vps.status}
-                      itemId={vps.id}
-                      moduleType="vps"
-                      onStatusUpdate={(newStatus) => handleVpsStatusUpdate(vps.id, newStatus)}
-                    />
-                  </td>
-                  <td className="py-2 sm:py-3 lg:py-4 px-2 sm:px-3 lg:px-6">
-                    <span className="text-[10px] sm:text-xs lg:text-sm text-muted-foreground">
-                      {new Date(vps.createdAt).toLocaleDateString()}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      <div className="animate-fade-in-up stagger-1">
+        <AdminStats
+          totalUsers={stats.totalUsers}
+          activeUsers={stats.activeUsers}
+          newUsersThisMonth={stats.newUsersThisMonth}
+          suspendedUsers={stats.suspendedUsers}
+          totalSubscriptions={stats.totalSubscriptions}
+          activeSubscriptions={stats.activeSubscriptions}
+          totalBrokerAccounts={stats.totalBrokerAccounts}
+          activeBrokerAccounts={stats.activeBrokerAccounts}
+          totalPropAccounts={stats.totalPropAccounts}
+          activePropAccounts={stats.activePropAccounts}
+        />
       </div>
 
       {/* Brokers Table */}
-      <div className="rounded-2xl border border-border bg-card p-3 sm:p-4 lg:p-6 shadow-soft-md">
-        <h2 className="text-base sm:text-lg lg:text-xl font-semibold text-foreground mb-3 sm:mb-4 lg:mb-6">
-          Broker Accounts
-        </h2>
+      <div className="animate-fade-in-up stagger-2 rounded-2xl border border-border/80 bg-card elevation-1 p-6">
+        <div className="mb-6 flex items-center gap-2.5">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <Briefcase className="h-[18px] w-[18px]" />
+          </div>
+          <h2 className="font-display text-lg font-semibold text-foreground">Broker Accounts</h2>
+        </div>
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-border text-left text-xs sm:text-sm font-medium text-muted-foreground">
-                <th className="py-1.5 sm:py-2 lg:py-3 px-2 sm:px-3 lg:px-6 whitespace-nowrap">User</th>
-                <th className="py-1.5 sm:py-2 lg:py-3 px-2 sm:px-3 lg:px-6 whitespace-nowrap">Broker</th>
-                <th className="py-1.5 sm:py-2 lg:py-3 px-2 sm:px-3 lg:px-6 whitespace-nowrap">Account Number</th>
-                <th className="py-1.5 sm:py-2 lg:py-3 px-2 sm:px-3 lg:px-6 whitespace-nowrap">Status</th>
-                <th className="py-1.5 sm:py-2 lg:py-3 px-2 sm:px-3 lg:px-6 whitespace-nowrap">Action</th>
-                <th className="py-1.5 sm:py-2 lg:py-3 px-2 sm:px-3 lg:px-6 whitespace-nowrap">Created</th>
+              <tr className="border-b border-border text-left">
+                <th className="pb-3 pr-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">User</th>
+                <th className="pb-3 pr-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Broker</th>
+                <th className="pb-3 pr-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Account Number</th>
+                <th className="pb-3 pr-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Status</th>
+                <th className="pb-3 pr-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Action</th>
+                <th className="pb-3 pr-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Created</th>
               </tr>
             </thead>
             <tbody>
               {brokersData.slice(0, 100).map((broker: any) => (
-                <tr key={broker.id} className="border-b border-border hover:bg-muted/50">
-                  <td className="py-4 px-6">
-                    <span className="font-medium">{broker.user?.firstName} {broker.user?.lastName}</span>
+                <tr key={broker.id} className="border-b border-border/50 transition-colors hover:bg-muted/50">
+                  <td className="py-3.5 pr-4">
+                    <span className="font-medium text-foreground">{broker.user?.firstName} {broker.user?.lastName}</span>
                   </td>
-                  <td className="py-4 px-6">
-                    <span className="inline-flex rounded-full bg-blue-100 dark:bg-blue-900/30 px-3 py-1 text-xs font-medium text-blue-700 dark:text-blue-400">
+                  <td className="py-3.5 pr-4">
+                    <span className="inline-flex rounded-full border border-primary/20 bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
                       {broker.brokerName}
                     </span>
                   </td>
-                  <td className="py-4 px-6">
-                    <code className="text-sm font-mono">{broker.mt5AccountNumber}</code>
+                  <td className="py-3.5 pr-4">
+                    <code className="font-mono text-sm tabular-nums">{broker.mt5AccountNumber}</code>
                   </td>
-                  <td className="py-4 px-6">
-                    <span 
-                      className={`inline-flex rounded-full px-3 py-1 text-xs font-medium`}
-                      style={{ 
-                        backgroundColor: 
-                          broker.status === 'REVIEW' ? '#f59e0b' :
-                          broker.status === 'PENDING' ? '#3b82f6' :
-                          broker.status === 'CERTIFIED' ? '#10b981' :
-                          broker.status === 'ACTIVE' ? '#22c55e' : '#6b7280',
-                        color: broker.status === 'ACTIVE' ? 'white' : 'inherit'
-                      }}
-                    >
+                  <td className="py-3.5 pr-4">
+                    <span className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-medium capitalize ${statusBadgeClass(broker.status)}`}>
                       {broker.status}
                     </span>
                   </td>
-                  <td className="py-4 px-6">
+                  <td className="py-3.5 pr-4">
                     <StatusDropdown
                       currentStatus={broker.status}
                       itemId={broker.id}
@@ -207,8 +128,8 @@ export default function AdminDashboardPage() {
                       onStatusUpdate={(newStatus) => handleBrokerStatusUpdate(broker.id, newStatus)}
                     />
                   </td>
-                  <td className="py-4 px-6">
-                    <span className="text-sm text-muted-foreground">
+                  <td className="py-3.5 pr-4">
+                    <span className="text-sm text-muted-foreground tabular-nums">
                       {new Date(broker.createdAt).toLocaleDateString()}
                     </span>
                   </td>
@@ -220,58 +141,51 @@ export default function AdminDashboardPage() {
       </div>
 
       {/* Prop Firms Table */}
-      <div className="rounded-2xl border border-border bg-card p-6 shadow-soft-md">
-        <h2 className="text-xl font-semibold text-foreground mb-6">
-          Prop Firm Accounts
-        </h2>
+      <div className="animate-fade-in-up stagger-3 rounded-2xl border border-border/80 bg-card elevation-1 p-6">
+        <div className="mb-6 flex items-center gap-2.5">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <Server className="h-[18px] w-[18px]" />
+          </div>
+          <h2 className="font-display text-lg font-semibold text-foreground">Prop Firm Accounts</h2>
+        </div>
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-border text-left text-sm font-medium text-muted-foreground">
-                <th className="py-3 px-6">User</th>
-                <th className="py-3 px-6">Prop Firm</th>
-                <th className="py-3 px-6">Account Number</th>
-                <th className="py-3 px-6">Phase</th>
-                <th className="py-3 px-6">Status</th>
-                <th className="py-3 px-6">Action</th>
-                <th className="py-3 px-6">Created</th>
+              <tr className="border-b border-border text-left">
+                <th className="pb-3 pr-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">User</th>
+                <th className="pb-3 pr-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Prop Firm</th>
+                <th className="pb-3 pr-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Account Number</th>
+                <th className="pb-3 pr-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Phase</th>
+                <th className="pb-3 pr-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Status</th>
+                <th className="pb-3 pr-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Action</th>
+                <th className="pb-3 pr-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Created</th>
               </tr>
             </thead>
             <tbody>
               {propFirmsData.slice(0, 100).map((prop: any) => (
-                <tr key={prop.id} className="border-b border-border hover:bg-muted/50">
-                  <td className="py-4 px-6">
-                    <span className="font-medium">{prop.user?.firstName} {prop.user?.lastName}</span>
+                <tr key={prop.id} className="border-b border-border/50 transition-colors hover:bg-muted/50">
+                  <td className="py-3.5 pr-4">
+                    <span className="font-medium text-foreground">{prop.user?.firstName} {prop.user?.lastName}</span>
                   </td>
-                  <td className="py-4 px-6">
-                    <span className="inline-flex rounded-full bg-orange-100 dark:bg-orange-900/30 px-3 py-1 text-xs font-medium text-orange-700 dark:text-orange-400">
+                  <td className="py-3.5 pr-4">
+                    <span className="inline-flex rounded-full border border-warning/25 bg-warning/15 px-2.5 py-0.5 text-xs font-medium text-warning">
                       {prop.firmName}
                     </span>
                   </td>
-                  <td className="py-4 px-6">
-                    <code className="text-sm font-mono">{prop.mt5AccountNumber}</code>
+                  <td className="py-3.5 pr-4">
+                    <code className="font-mono text-sm tabular-nums">{prop.mt5AccountNumber}</code>
                   </td>
-                  <td className="py-4 px-6">
-                    <span className="inline-flex rounded-full bg-indigo-100 dark:bg-indigo-900/30 px-3 py-1 text-xs font-medium text-indigo-700 dark:text-indigo-400">
+                  <td className="py-3.5 pr-4">
+                    <span className="inline-flex rounded-full border border-primary/20 bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
                       {prop.phase}
                     </span>
                   </td>
-                  <td className="py-4 px-6">
-                    <span 
-                      className={`inline-flex rounded-full px-3 py-1 text-xs font-medium`}
-                      style={{ 
-                        backgroundColor: 
-                          (prop.status || 'PENDING') === 'REVIEW' ? '#f59e0b' :
-                          (prop.status || 'PENDING') === 'PENDING' ? '#3b82f6' :
-                          (prop.status || 'PENDING') === 'CERTIFIED' ? '#10b981' :
-                          (prop.status || 'PENDING') === 'ACTIVE' ? '#22c55e' : '#6b7280',
-                        color: (prop.status || 'PENDING') === 'ACTIVE' ? 'white' : 'inherit'
-                      }}
-                    >
+                  <td className="py-3.5 pr-4">
+                    <span className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-medium capitalize ${statusBadgeClass(prop.status || 'PENDING')}`}>
                       {prop.status || 'PENDING'}
                     </span>
                   </td>
-                  <td className="py-4 px-6">
+                  <td className="py-3.5 pr-4">
                     <StatusDropdown
                       currentStatus={prop.status || 'PENDING'}
                       itemId={prop.id}
@@ -279,8 +193,8 @@ export default function AdminDashboardPage() {
                       onStatusUpdate={(newStatus) => handlePropFirmStatusUpdate(prop.id, newStatus)}
                     />
                   </td>
-                  <td className="py-4 px-6">
-                    <span className="text-sm text-muted-foreground">
+                  <td className="py-3.5 pr-4">
+                    <span className="text-sm text-muted-foreground tabular-nums">
                       {new Date(prop.createdAt).toLocaleDateString()}
                     </span>
                   </td>

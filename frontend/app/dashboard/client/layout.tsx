@@ -7,7 +7,7 @@ import { useOnboardingStatus } from '@/lib/use-onboarding-status';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Navbar } from '@/components/layout/Navbar';
 import { MobileDrawer } from '@/components/layout/MobileDrawer';
-import { OnboardingBanner } from '@/components/onboarding/OnboardingBanner';
+import { MobileBottomNav } from '@/components/layout/MobileBottomNav';
 import type { ReactNode } from 'react';
 
 interface ClientLayoutProps {
@@ -26,31 +26,22 @@ export default function ClientLayout({ children }: ClientLayoutProps) {
     if (!authLoading && isAuthenticated && onboardingData) {
       const isOnboardingPage = pathname.startsWith('/dashboard/client/onboarding');
       const isNetworkPage = pathname.startsWith('/dashboard/client/network');
-      
-      // CRITICAL: Dashboard access should ONLY depend on backend status
-      // If status is NOT "active", user should NOT access full dashboard
-      const isStatusActive = typeof onboardingData.progress === 'string' 
-        ? onboardingData.progress === 'active' 
-        : onboardingData.progress === 1; // fallback for number type
-      
-      // If onboarding is NOT complete and user is NOT on onboarding or network page
-      if (!isStatusActive && !isOnboardingPage && !isNetworkPage) {
+      const isCommissionsPage = pathname.startsWith('/dashboard/client/commissions');
+
+      // Until onboarding is complete only the wizard, network and commissions pages are accessible
+      if (!onboardingData.isComplete && !isOnboardingPage && !isNetworkPage && !isCommissionsPage) {
         router.push('/dashboard/client/onboarding');
         return;
       }
 
-      // If onboarding IS complete (status is "active") and user IS on onboarding page
-      if (isStatusActive && isOnboardingPage) {
+      // Once complete, the wizard redirects back to the dashboard
+      if (onboardingData.isComplete && isOnboardingPage) {
         router.push('/dashboard/client');
         return;
       }
     }
   }, [authLoading, isAuthenticated, onboardingData, pathname, router]);
 
-  // Check if user status is "review" - show onboarding banner
-  const userProgress = onboardingData?.progress;
-  const isUserInReview = typeof userProgress === 'string' && userProgress === 'review';
-  
   if (authLoading || onboardingLoading) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
@@ -60,11 +51,6 @@ export default function ClientLayout({ children }: ClientLayoutProps) {
         </div>
       </div>
     );
-  }
-
-  // Show onboarding banner when user is in review status
-  if (isUserInReview) {
-    return <OnboardingBanner />;
   }
 
   if (!isAuthenticated) {
@@ -80,9 +66,9 @@ export default function ClientLayout({ children }: ClientLayoutProps) {
 
   return (
     <div className="bg-background">
-      <Sidebar 
-        isAdmin={false} 
-        isOnboardingLocked={!onboardingData?.isComplete} 
+      <Sidebar
+        isAdmin={false}
+        isOnboardingLocked={!onboardingData?.isComplete}
       />
       <MobileDrawer
         isOpen={mobileMenuOpen}
@@ -96,9 +82,11 @@ export default function ClientLayout({ children }: ClientLayoutProps) {
       />
 
       {/* Main Content */}
-      <main className="min-h-screen pt-16 lg:pl-64">
-        <div className="p-4 sm:p-6 lg:p-6">{children}</div>
+      <main className="min-h-screen pt-16 pb-20 lg:pb-0 lg:pl-64">
+        <div className="mx-auto w-full max-w-7xl p-4 sm:p-6 lg:p-8">{children}</div>
       </main>
+
+      <MobileBottomNav isAdmin={false} />
     </div>
   );
 }

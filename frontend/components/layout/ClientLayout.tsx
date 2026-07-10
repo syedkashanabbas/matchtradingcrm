@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Sidebar } from './Sidebar';
 import { Navbar } from './Navbar';
 import { MobileDrawer } from './MobileDrawer';
+import { MobileBottomNav } from './MobileBottomNav';
 import { useAuth } from '@/lib/hooks';
 
 interface ClientLayoutProps {
@@ -50,9 +51,11 @@ export function ClientLayout({ children }: ClientLayoutProps) {
       />
 
       {/* Main Content */}
-      <main className="min-h-screen pt-16 lg:pl-64">
-        <div className="p-6">{children}</div>
+      <main className="min-h-screen pt-16 pb-20 lg:pb-0 lg:pl-64">
+        <div className="mx-auto w-full max-w-7xl p-4 sm:p-6 lg:p-8">{children}</div>
       </main>
+
+      <MobileBottomNav isAdmin={false} />
     </div>
   );
 }

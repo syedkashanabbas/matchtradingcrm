@@ -7,11 +7,42 @@ export interface ApiResponse<T = any> {
   [key: string]: any;
 }
 
-import type { CurrentUser, ApiKey, Notification, AdminStats, User } from './types';
+import type { CurrentUser, Notification, AdminStats, User } from './types';
 import type { ClientDashboardData } from './client-dashboard-hook';
+
+export interface ProvisioningStatus {
+  status: 'NOT_STARTED' | 'IN_PROGRESS' | 'ACTIVE' | 'ERROR' | 'DECOMMISSIONED';
+  detail?: string;
+  completedSteps: string[];
+  failedStep?: string | null;
+  hedgeStatus: 'active' | 'paused' | 'archived' | null;
+  updatedAt: string | null;
+}
+
+export type OnboardingStepId = 'payment' | 'broker' | 'prop';
+export type OnboardingStepStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED';
+
+export interface OnboardingStatus {
+  progress: string;
+  userStatus: string;
+  completed: boolean;
+  nextStep: OnboardingStepId | null;
+  steps: {
+    payment: { status: OnboardingStepStatus; data: { plan: string; status: string; currentPeriodEnd: string } | null };
+    broker: {
+      status: OnboardingStepStatus;
+      data: { id: string; brokerName: string; mt5AccountNumber: string; mt5Server: string; mt5Password: string | null } | null;
+    };
+    prop: {
+      status: OnboardingStepStatus;
+      data: { id: string; firmName: string; mt5AccountNumber: string; mt5Server: string; phase: string; mt5Password: string | null } | null;
+    };
+  };
+}
 
 class ApiClient {
   private baseURL: string;
+  private refreshPromise: Promise<string | null> | null = null;
 
   constructor(baseURL: string = API_BASE_URL) {
     this.baseURL = baseURL;
@@ -19,10 +50,11 @@ class ApiClient {
 
   private async request<T>(
     endpoint: string,
-    options: RequestInit = {}
+    options: RequestInit = {},
+    isRetry = false
   ): Promise<ApiResponse<T>> {
     const url = `${this.baseURL}/api${endpoint}`;
-    
+
     const config: RequestInit = {
       headers: {
         'Content-Type': 'application/json',
@@ -42,10 +74,21 @@ class ApiClient {
 
     try {
       const response = await fetch(url, config);
+
+      // Access token expired: refresh once and retry the original request
+      if (response.status === 401 && token && !isRetry && !endpoint.startsWith('/auth/')) {
+        const newToken = await this.refreshAccessToken();
+        if (newToken) {
+          return this.request<T>(endpoint, options, true);
+        }
+        this.handleSessionExpired();
+      }
+
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.message || `HTTP error! status: ${response.status}`);
+        // New endpoints: { success:false, error:{code,message} }; legacy: { message }
+        throw new Error(data?.error?.message || data?.message || `HTTP error! status: ${response.status}`);
       }
 
       return data;
@@ -53,6 +96,52 @@ class ApiClient {
       console.error('API Error:', error);
       throw error;
     }
+  }
+
+  // Single-flight refresh: concurrent 401s share one refresh call
+  private refreshAccessToken(): Promise<string | null> {
+    if (typeof window === 'undefined') return Promise.resolve(null);
+    if (!this.refreshPromise) {
+      this.refreshPromise = (async () => {
+        try {
+          const raw = sessionStorage.getItem('auth-user');
+          if (!raw) return null;
+          const userData = JSON.parse(raw);
+          if (!userData.refreshToken) return null;
+
+          const res = await fetch(`${this.baseURL}/api/auth/refresh`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refreshToken: userData.refreshToken }),
+          });
+          if (!res.ok) return null;
+
+          const data = await res.json();
+          if (!data?.accessToken) return null;
+
+          userData.accessToken = data.accessToken;
+          sessionStorage.setItem('auth-user', JSON.stringify(userData));
+          return data.accessToken as string;
+        } catch {
+          return null;
+        } finally {
+          this.refreshPromise = null;
+        }
+      })();
+    }
+    return this.refreshPromise;
+  }
+
+  private handleSessionExpired() {
+    if (typeof window === 'undefined') return;
+    sessionStorage.removeItem('auth-user');
+    if (!window.location.pathname.startsWith('/login')) {
+      window.location.href = '/login?expired=1';
+    }
+  }
+
+  getAuthTokenPublic(): string | null {
+    return this.getAuthToken();
   }
 
   private getAuthToken(): string | null {
@@ -86,28 +175,20 @@ class ApiClient {
     });
   }
 
-  async register(firstName: string, lastName: string, email: string, phone: string, password: string, refCode?: string) {
+  async register(data: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone: string;
+    country: string;
+    password: string;
+    termsAccepted: boolean;
+    privacyAccepted: boolean;
+    refCode?: string;
+  }) {
     return this.request('/auth/register', {
       method: 'POST',
-      body: JSON.stringify({ firstName, lastName, email, phone, password, refCode }),
-    });
-  }
-
-  // API Keys endpoints
-  async getApiKeys() {
-    return this.request('/apikeys');
-  }
-
-  async createApiKey(name: string) {
-    return this.request('/apikeys', {
-      method: 'POST',
-      body: JSON.stringify({ name }),
-    });
-  }
-
-  async deleteApiKey(id: string) {
-    return this.request(`/apikeys/${id}`, {
-      method: 'DELETE',
+      body: JSON.stringify(data),
     });
   }
 
@@ -131,23 +212,12 @@ class ApiClient {
     return this.request('/admin/users');
   }
 
-  async getAllVps() {
-    return this.request('/admin/vps');
-  }
-
   async getAllBrokers() {
     return this.request('/admin/brokers');
   }
 
   async getAllPropFirms() {
     return this.request('/admin/prop-firms');
-  }
-
-  async updateVpsStatus(vpsId: string, status: string) {
-    return this.request(`/admin/vps/${vpsId}/status`, {
-      method: 'PATCH',
-      body: JSON.stringify({ status }),
-    });
   }
 
   async updateBrokerStatus(brokerId: string, status: string) {
@@ -166,16 +236,8 @@ class ApiClient {
 
   async updateUserStatus(userId: string, status: string) {
     return this.request(`/admin/users/${userId}/status`, {
-      method: 'PUT',
+      method: 'PATCH',
       body: JSON.stringify({ status }),
-    });
-  }
-
-  // EA Verification endpoint
-  async verifyEaAccess(apiKey: string, deviceId: string) {
-    return this.request('/ea/verify', {
-      method: 'POST',
-      body: JSON.stringify({ apiKey, deviceId }),
     });
   }
 
@@ -196,11 +258,23 @@ class ApiClient {
   }
 
   // Billing endpoints
-  async createCheckoutSession(plan?: string) {
+  async createCheckoutSession(plan: string, method: 'card' | 'crypto' = 'card', purpose?: 'renewal') {
     return this.request('/subscriptions/checkout', {
       method: 'POST',
-      body: JSON.stringify({ plan }),
+      body: JSON.stringify({ plan, method, purpose }),
     });
+  }
+
+  async getInvoices() {
+    return this.request('/subscriptions/invoices');
+  }
+
+  async createPortalSession() {
+    return this.request('/subscriptions/portal', { method: 'POST' });
+  }
+
+  async getCryptoOrder(orderId: string) {
+    return this.request(`/subscriptions/crypto-orders/${orderId}`);
   }
 
   async getCurrentSubscription() {
@@ -221,41 +295,6 @@ class ApiClient {
 
   async getSubscriptionPlans() {
     return this.request('/subscriptions/plans');
-  }
-
-  // VPS endpoints
-  async getVpsList() {
-    return this.request('/vps');
-  }
-
-  async createVps(vpsData: any) {
-    return this.request('/vps', {
-      method: 'POST',
-      body: JSON.stringify(vpsData),
-    });
-  }
-
-  async getVps(id: string) {
-    return this.request(`/vps/${id}`);
-  }
-
-  async updateVps(id: string, vpsData: any) {
-    return this.request(`/vps/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(vpsData),
-    });
-  }
-
-  async deleteVps(id: string) {
-    return this.request(`/vps/${id}`, {
-      method: 'DELETE',
-    });
-  }
-
-  async testVps(id: string) {
-    return this.request(`/vps/${id}/test`, {
-      method: 'POST',
-    });
   }
 
   // Broker endpoints
@@ -294,8 +333,8 @@ class ApiClient {
   }
 
   // Prop endpoints
-  async getPropList() {
-    return this.request('/prop');
+  async getPropList(includeArchived = false) {
+    return this.request(`/prop${includeArchived ? '?includeArchived=true' : ''}`);
   }
 
   async createProp(propData: any) {
@@ -335,13 +374,35 @@ class ApiClient {
     });
   }
 
-  // Onboarding endpoints
-  async getOnboardingStatus() {
+  // Onboarding endpoints (D3: wizard wired to /api/v1/onboarding/*)
+  async getOnboardingStatus(): Promise<ApiResponse<OnboardingStatus>> {
     return this.request('/v1/onboarding/status');
   }
 
-  async getClientOnboarding() {
-    return this.request('/v1/onboarding/status');
+  async saveOnboardingBroker(data: {
+    brokerName: string;
+    mt5AccountNumber: string;
+    mt5Password: string;
+    mt5Server: string;
+    brokerPortalPassword?: string;
+  }) {
+    return this.request('/v1/onboarding/broker', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async saveOnboardingProp(data: {
+    firmName: string;
+    mt5AccountNumber: string;
+    mt5Password: string;
+    mt5Server: string;
+    phase?: 'CHALLENGE' | 'FUNDED';
+  }) {
+    return this.request('/v1/onboarding/prop', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
   }
 
   async getAuthMe() {
@@ -355,6 +416,199 @@ class ApiClient {
 
   async getSupportedPropFirms() {
     return this.request('/prop/supported');
+  }
+
+  async getAdminUserDetail(userId: string) {
+    return this.request(`/admin/users/${userId}`);
+  }
+
+  async getAdminSubscriptions() {
+    return this.request('/admin/subscriptions');
+  }
+
+  // Provisioning endpoints (M2)
+  async getProvisioningStatus(): Promise<ApiResponse<ProvisioningStatus>> {
+    return this.request('/provisioning/status');
+  }
+
+  async adminListProvisions(status?: string) {
+    return this.request(`/admin/provisioning${status ? `?status=${status}` : ''}`);
+  }
+
+  async adminProvisionDetail(userId: string) {
+    return this.request(`/admin/provisioning/${userId}`);
+  }
+
+  async adminRetryProvision(userId: string) {
+    return this.request(`/admin/provisioning/${userId}/retry`, { method: 'POST' });
+  }
+
+  async adminReprovision(userId: string) {
+    return this.request(`/admin/provisioning/${userId}/reprovision`, { method: 'POST' });
+  }
+
+  async adminServiceStart(userId: string) {
+    return this.request(`/admin/service/${userId}/start`, { method: 'POST' });
+  }
+
+  async adminServiceStop(userId: string) {
+    return this.request(`/admin/service/${userId}/stop`, { method: 'POST' });
+  }
+
+  async adminServiceDelete(userId: string) {
+    return this.request(`/admin/service/${userId}/delete`, {
+      method: 'POST',
+      body: JSON.stringify({ confirm: true }),
+    });
+  }
+
+  async adminServiceStatus(userId: string) {
+    return this.request(`/admin/service/${userId}/status`);
+  }
+
+  async adminRevealCredentials(userId: string, accountType: 'broker' | 'prop', accountId: string) {
+    return this.request(`/admin/users/${userId}/credentials/${accountType}/${accountId}/reveal`, {
+      method: 'POST',
+    });
+  }
+
+  // Broker lifecycle (M2)
+  async replaceBroker(id: string, data: {
+    brokerName: string;
+    mt5AccountNumber: string;
+    mt5Password: string;
+    mt5Server: string;
+    brokerPortalPassword?: string;
+  }) {
+    return this.request(`/broker/${id}/replace`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async setHedgeBroker(brokerAccountId: string) {
+    return this.request('/broker/hedge-broker', {
+      method: 'POST',
+      body: JSON.stringify({ brokerAccountId }),
+    });
+  }
+
+  // Commission endpoints (M4)
+  async getAgentCommissions(filters?: { from?: string; to?: string; status?: string }) {
+    const params = new URLSearchParams();
+    if (filters?.from) params.set('from', filters.from);
+    if (filters?.to) params.set('to', filters.to);
+    if (filters?.status) params.set('status', filters.status);
+    const query = params.toString();
+    return this.request(`/network/commissions${query ? `?${query}` : ''}`);
+  }
+
+  async getDownlineClients() {
+    return this.request('/network/downline-clients');
+  }
+
+  // Exonoma network engine (spec v1.1 §7.9)
+  async getQualification() {
+    return this.request('/network/qualification');
+  }
+
+  async getChallenges() {
+    return this.request('/network/challenges');
+  }
+
+  async getTravelPromos() {
+    return this.request('/network/promos');
+  }
+
+  async adminGetChallenges() {
+    return this.request('/admin/challenges');
+  }
+
+  async adminSaveChallenge(data: { id?: string; name: string; metric: string; prize: string; startsAt: string; endsAt: string }) {
+    return this.request(data.id ? `/admin/challenges/${data.id}` : '/admin/challenges', {
+      method: data.id ? 'PUT' : 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async adminFreezeChallenge(id: string) {
+    return this.request(`/admin/challenges/${id}/freeze`, { method: 'POST' });
+  }
+
+  async adminGetPromos() {
+    return this.request('/admin/promos');
+  }
+
+  async adminSavePromo(data: { id?: string; name: string; metric: string; threshold: number; deadline: string }) {
+    return this.request(data.id ? `/admin/promos/${data.id}` : '/admin/promos', {
+      method: data.id ? 'PUT' : 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async adminSetPromoProgress(promoId: string, userId: string, status: string) {
+    return this.request(`/admin/promos/${promoId}/progress/${userId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ status }),
+    });
+  }
+
+  async adminGetMemberships() {
+    return this.request('/admin/network/memberships');
+  }
+
+  async adminGetCommissionPlan() {
+    return this.request('/admin/commissions/plan');
+  }
+
+  async adminSaveCommissionPlan(data: {
+    name: string;
+    isActive: boolean;
+    levels: Array<{ level: number; rate: number; minActiveDirects?: number }>;
+  }) {
+    return this.request('/admin/commissions/plan', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async adminGetCommissionReport(filters?: { from?: string; to?: string }) {
+    const params = new URLSearchParams();
+    if (filters?.from) params.set('from', filters.from);
+    if (filters?.to) params.set('to', filters.to);
+    const query = params.toString();
+    return this.request(`/admin/commissions${query ? `?${query}` : ''}`);
+  }
+
+  async adminGetAgentCommissions(agentId: string) {
+    return this.request(`/admin/commissions/agent/${agentId}`);
+  }
+
+  async adminListPayoutBatches() {
+    return this.request('/admin/commissions/payout-batches');
+  }
+
+  async adminCreatePayoutBatch(periodStart: string, periodEnd: string) {
+    return this.request('/admin/commissions/payout-batch', {
+      method: 'POST',
+      body: JSON.stringify({ periodStart, periodEnd }),
+    });
+  }
+
+  async adminMarkPayoutBatchPaid(batchId: string) {
+    return this.request(`/admin/commissions/payout-batch/${batchId}/mark-paid`, { method: 'POST' });
+  }
+
+  /** Downloads the payout batch CSV (needs the auth header, so no plain link). */
+  async adminDownloadPayoutBatchCsv(batchId: string): Promise<Blob> {
+    const token = this.getAuthTokenPublic();
+    const response = await fetch(`${this.baseURL}/api/admin/commissions/payout-batch/${batchId}/export`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!response.ok) {
+      throw new Error(`Export failed (${response.status})`);
+    }
+    return response.blob();
   }
 
   // Network endpoints

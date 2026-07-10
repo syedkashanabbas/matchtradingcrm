@@ -8,7 +8,7 @@ export default function RegisterPage() {
   return (
     <AuthLayout
       title="Create Account"
-      description="Join MatchTrading and start trading today"
+      description="Join EIDOS and start trading today"
     >
       <Suspense fallback={<div>Loading...</div>}>
         <RegisterForm />

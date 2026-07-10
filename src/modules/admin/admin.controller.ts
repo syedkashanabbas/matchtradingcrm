@@ -2,14 +2,38 @@ import { Request, Response } from "express";
 import {
   getAdminDashboard,
   getAllUsers,
+  getUserDetail,
   updateUserStatus,
-  getAllVpsConfigs,
   getAllBrokerConfigs,
   getAllPropConfigs,
-  updateVpsConfigStatus,
+  getAllSubscriptions,
   updateBrokerConfigStatus,
   updatePropConfigStatus,
 } from "./admin.service";
+
+/**
+ * All subscriptions (admin)
+ */
+export const listSubscriptions = async (req: Request, res: Response) => {
+  try {
+    const data = await getAllSubscriptions();
+    res.json({ success: true, data });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: { code: "SUBSCRIPTIONS_FAILED", message: error.message } });
+  }
+};
+
+/**
+ * Get one user's full detail (admin client page)
+ */
+export const userDetail = async (req: Request, res: Response) => {
+  try {
+    const data = await getUserDetail(req.params.id as string);
+    res.json({ success: true, data });
+  } catch (error: any) {
+    res.status(404).json({ success: false, error: { code: "USER_NOT_FOUND", message: error.message } });
+  }
+};
 
 /**
  * Dashboard
@@ -69,22 +93,6 @@ export const changeUserStatus = async (req: Request, res: Response) => {
 };
 
 /**
- * Get all VPS configurations (admin only)
- */
-export const getAllVps = async (req: Request, res: Response) => {
-  try {
-    const vpsConfigs = await getAllVpsConfigs();
-    
-    res.json({
-      message: "VPS configurations fetched",
-      data: vpsConfigs,
-    });
-  } catch (error: any) {
-    res.status(500).json({ message: error.message });
-  }
-};
-
-/**
  * Get all broker configurations (admin only)
  */
 export const getAllBrokers = async (req: Request, res: Response) => {
@@ -110,24 +118,6 @@ export const getAllPropFirms = async (req: Request, res: Response) => {
     res.json({
       message: "Prop Firm configurations fetched",
       data: propConfigs,
-    });
-  } catch (error: any) {
-    res.status(500).json({ message: error.message });
-  }
-};
-
-/**
- * Update VPS status (admin only)
- */
-export const updateVpsStatus = async (req: Request, res: Response) => {
-  try {
-    const { userId, status } = req.body;
-    const vpsId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-    
-    await updateVpsConfigStatus(vpsId, status);
-    
-    res.json({
-      message: "VPS status updated successfully",
     });
   } catch (error: any) {
     res.status(500).json({ message: error.message });

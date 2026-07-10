@@ -1,130 +1,76 @@
-import { Request, Response } from "express";
+import { Response } from "express";
 import { AuthRequest } from "../../middleware/auth.middleware";
-import { 
-  createOnboardingVps, 
-  createOnboardingBroker, 
-  createOnboardingProp, 
-  createOnboardingSubscription,
-  getOnboardingProgress,
-  updateOnboardingProgress 
+import {
+  createOnboardingBroker,
+  createOnboardingProp,
+  getOnboardingStatus as getOnboardingStatusService,
 } from "./onboarding.service";
-
-export const createVpsOnboarding = async (req: AuthRequest, res: Response) => {
-  try {
-    const userId = req.user.userId;
-    const vpsData = req.body;
-
-    const result = await createOnboardingVps(userId, vpsData);
-    
-    // Update progress
-    await updateOnboardingProgress(userId, 'vps_ready');
-    
-    res.status(201).json({
-      message: "VPS configuration saved successfully",
-      data: result,
-      progress: 'vps_ready'
-    });
-  } catch (error: any) {
-    console.error("VPS onboarding error:", error);
-    res.status(400).json({ message: error.message });
-  }
-};
+import { onboardingBrokerSchema, onboardingPropSchema } from "./onboarding.validation";
 
 export const createBrokerOnboarding = async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user.userId;
-    const brokerData = req.body;
+    const parsed = onboardingBrokerSchema.safeParse(req.body);
 
-    const result = await createOnboardingBroker(userId, brokerData);
-    
-    // Update progress
-    await updateOnboardingProgress(userId, 'broker_ready');
-    
+    if (!parsed.success) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: "VALIDATION_ERROR",
+          message: parsed.error.issues.map(i => `${i.path.join(".")}: ${i.message}`).join("; "),
+        },
+      });
+    }
+
+    const result = await createOnboardingBroker(userId, parsed.data);
+
     res.status(201).json({
+      success: true,
       message: "Broker configuration saved successfully",
       data: result,
-      progress: 'broker_ready'
     });
   } catch (error: any) {
     console.error("Broker onboarding error:", error);
-    res.status(400).json({ message: error.message });
+    res.status(400).json({ success: false, error: { code: "ONBOARDING_BROKER_FAILED", message: error.message } });
   }
 };
 
 export const createPropOnboarding = async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user.userId;
-    const propData = req.body;
+    const parsed = onboardingPropSchema.safeParse(req.body);
 
-    const result = await createOnboardingProp(userId, propData);
-    
-    // Update progress
-    await updateOnboardingProgress(userId, 'prop_ready');
-    
+    if (!parsed.success) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: "VALIDATION_ERROR",
+          message: parsed.error.issues.map(i => `${i.path.join(".")}: ${i.message}`).join("; "),
+        },
+      });
+    }
+
+    const result = await createOnboardingProp(userId, parsed.data);
+
     res.status(201).json({
+      success: true,
       message: "Prop firm configuration saved successfully",
       data: result,
-      progress: 'prop_ready'
     });
   } catch (error: any) {
     console.error("Prop onboarding error:", error);
-    res.status(400).json({ message: error.message });
-  }
-};
-
-export const createPlatformOnboarding = async (req: AuthRequest, res: Response) => {
-  try {
-    const userId = req.user.userId;
-    const platformData = req.body;
-
-    const result = await createOnboardingSubscription(userId, platformData);
-    
-    // Update progress
-    await updateOnboardingProgress(userId, 'platform_ready');
-    
-    res.status(201).json({
-      message: "Platform configuration saved successfully",
-      data: result,
-      progress: 'platform_ready'
-    });
-  } catch (error: any) {
-    console.error("Platform onboarding error:", error);
-    res.status(400).json({ message: error.message });
-  }
-};
-
-export const createSubscriptionOnboarding = async (req: AuthRequest, res: Response) => {
-  try {
-    const userId = req.user.userId;
-    const subscriptionData = req.body;
-
-    const result = await createOnboardingSubscription(userId, subscriptionData);
-    
-    // Update progress to "review" for admin approval
-    await updateOnboardingProgress(userId, 'review');
-    
-    res.status(201).json({
-      message: "Subscription configuration saved successfully",
-      data: result,
-      progress: 'review'
-    });
-  } catch (error: any) {
-    console.error("Subscription onboarding error:", error);
-    res.status(400).json({ message: error.message });
+    res.status(400).json({ success: false, error: { code: "ONBOARDING_PROP_FAILED", message: error.message } });
   }
 };
 
 export const getOnboardingStatus = async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user.userId;
-    const progress = await getOnboardingProgress(userId);
-    
-    res.json({
-      progress: progress || 'not_started',
-      message: "Onboarding status retrieved successfully"
-    });
+    const status = await getOnboardingStatusService(userId);
+
+    res.json({ success: true, data: status });
   } catch (error: any) {
     console.error("Get onboarding status error:", error);
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ success: false, error: { code: "ONBOARDING_STATUS_FAILED", message: error.message } });
   }
 };

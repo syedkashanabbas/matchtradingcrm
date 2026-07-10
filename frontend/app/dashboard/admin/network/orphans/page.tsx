@@ -43,11 +43,11 @@ export default function OrphanUsersPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold text-foreground">Orphan Users</h1>
-        <p className="text-muted-foreground mt-2">
+        <h1 className="page-title">Orphan Users</h1>
+        <p className="page-subtitle">
           These users registered without a referral link. Assign them to an upline manually.
         </p>
       </div>

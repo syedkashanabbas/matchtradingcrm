@@ -1,7 +1,7 @@
 {
-  "name": "crm-backend",
+  "name": "eidos-crm-backend",
   "version": "1.0.0",
-  "description": "MatchTrading CRM Backend",
+  "description": "EIDOS CRM Backend",
   "main": "dist/server.js",
   "scripts": {
     "dev": "nodemon",
@@ -11,7 +11,11 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
-    "prisma:seed": "ts-node prisma/seed.ts"
+    "prisma:seed": "ts-node prisma/seed.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "dev:db": "ts-node --transpile-only src/scripts/dev-db.ts",
+    "dev:fixtures": "ts-node --transpile-only src/scripts/dev-fixtures.ts"
   },
   "keywords": [
     "crm",
@@ -44,8 +48,10 @@
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^25.3.0",
+    "embedded-postgres": "^18.4.0-beta.17",
     "nodemon": "^3.1.14",
     "ts-node": "^10.9.2",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
   }
 }

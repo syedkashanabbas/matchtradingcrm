@@ -46,25 +46,11 @@ export const mockUsers = [
   },
 ];
 
-export const mockApiKeys = [
-  {
-    id: '1',
-    name: 'Live API',
-    key: 'dave_live_a8KxR7mN2pQ9',
-    lastFour: 'a8Kx',
-    created: '2026-02-07',
-    lastUsed: '2026-03-04',
-    status: 'active' as const,
-    prefix: 'dave_live_a8Kx',
-    environment: 'Live' as const,
-  },
-];
-
 export const mockNotifications = [
   {
     id: '1',
-    title: 'VPS connected successfully',
-    description: 'Your VPS has been connected and is ready to use',
+    title: 'Service provisioned successfully',
+    description: 'Your trading service has been provisioned and is ready to use',
     read: false,
     timestamp: '2026-02-10T12:00:00Z',
     type: 'success' as const,
@@ -79,8 +65,8 @@ export const mockNotifications = [
   },
   {
     id: '3',
-    title: 'API key generated',
-    description: 'Your new API key has been generated successfully',
+    title: 'Subscription renewed',
+    description: 'Your subscription has been renewed successfully',
     read: true,
     timestamp: '2026-02-08T14:22:00Z',
     type: 'info' as const,
@@ -99,19 +85,9 @@ export const mockCurrentUser = {
   tier: 'Pro' as const,
   avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=John',
   joinDate: '2024-01-15',
+  signupDate: '2024-01-15',
   role: 'CLIENT' as const,
   accountId: '10345',
-  apiKeys: [
-    {
-      id: '1',
-      name: 'Live API',
-      key: 'dave_live_a8KxR7mN2pQ9',
-      lastFour: 'a8Kx',
-      created: '2026-02-07',
-      lastUsed: '2026-03-04',
-      status: 'active' as const,
-    },
-  ],
 };
 
 // Admin user for testing - uncomment the role line in mockCurrentUser to switch to admin
@@ -122,7 +98,7 @@ export const mockAdminUser = {
   firstName: 'Admin',
   lastName: 'User',
   phone: '+1 (555) 000-0000',
-  company: 'MatchTrading Inc',
+  company: 'EIDOS Inc',
   status: 'active' as const,
   tier: 'Enterprise' as const,
   avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin',
@@ -132,7 +108,6 @@ export const mockAdminUser = {
 
 export const mockDashboardStats = {
   accountStatus: 'Active' as const,
-  vpsStatus: 'Connected',
   broker: 'Vantage',
   propFirm: 'Funded Next',
   subscriptionPlan: 'Pro',
@@ -140,13 +115,6 @@ export const mockDashboardStats = {
   activeUsers: 1,
   subscriptionStatus: 'active' as const,
   lastActivity: '2026-03-04T14:30:00Z',
-};
-
-export const mockVPSData = {
-  provider: 'Contabo',
-  ipAddress: '185.123.456.789',
-  operatingSystem: 'Windows Server 2022',
-  status: 'Connected',
 };
 
 export const mockBrokerData = {
@@ -181,7 +149,6 @@ export const mockAdminStats = {
   activeSubscriptions: 4621,
   totalRevenue: '$485,420',
   monthlyRevenue: '$45,230',
-  vpsConnected: 3214,
   brokersConnected: 4821,
   propFirmsConnected: 3456,
   signupGrowth: [
@@ -227,42 +194,6 @@ export const mockSubscriptions = [
     startDate: '2025-12-01',
     nextBillingDate: '2026-03-01',
     paymentMethod: 'Visa **** 1234',
-  },
-];
-
-export const mockVPSAccounts = [
-  {
-    id: '1',
-    userId: 'user-1',
-    userName: 'John Carter',
-    provider: 'Contabo',
-    ipAddress: '185.123.456.789',
-    operatingSystem: 'Windows Server 2022',
-    status: 'connected' as const,
-    connectedDate: '2026-02-07',
-    lastSync: '2026-03-04T14:22:00Z',
-  },
-  {
-    id: '2',
-    userId: 'user-2',
-    userName: 'Jane Smith',
-    provider: 'Linode',
-    ipAddress: '192.168.1.100',
-    operatingSystem: 'Ubuntu 20.04',
-    status: 'connected' as const,
-    connectedDate: '2026-02-10',
-    lastSync: '2026-03-04T15:10:00Z',
-  },
-  {
-    id: '3',
-    userId: 'user-3',
-    userName: 'Bob Johnson',
-    provider: 'DigitalOcean',
-    ipAddress: '172.16.0.50',
-    operatingSystem: 'Windows Server 2019',
-    status: 'disconnected' as const,
-    connectedDate: '2026-01-20',
-    lastSync: '2026-02-15T09:30:00Z',
   },
 ];
 
@@ -348,7 +279,7 @@ export const mockRecentActivity = [
   {
     id: '1',
     user: 'You',
-    action: 'VPS connected successfully',
+    action: 'Service provisioned successfully',
     timestamp: '2026-02-10T12:00:00Z',
   },
   {
@@ -360,22 +291,12 @@ export const mockRecentActivity = [
   {
     id: '3',
     user: 'You',
-    action: 'API key generated',
+    action: 'Subscription renewed',
     timestamp: '2026-02-08T14:22:00Z',
   },
 ];
 
 export const mockOnboardingData = {
-  vps: {
-    provider: 'Contabo',
-    ipAddress: '185.123.456.789',
-    vpsUsername: 'admin',
-    vpsPassword: '••••••••',
-    loginUrl: 'https://api.contabo.com',
-    panelUsername: 'admin@contabo.com',
-    panelPassword: '••••••••',
-    operatingSystem: 'Windows Server 2022',
-  },
   broker: {
     brokerName: 'Vantage',
     mt5AccountNumber: '24031010',
@@ -389,10 +310,5 @@ export const mockOnboardingData = {
     mt5Password: '••••••••',
     mt5Server: 'FundedNext-Live',
     phase: 'Challenge',
-  },
-  generatedApiKey: {
-    apiKey: 'dave_live_a8KxR7mN2pQ9',
-    prefix: 'dave_live_a8Kx',
-    environment: 'Live',
   },
 };

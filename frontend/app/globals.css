@@ -4,40 +4,45 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  /* Light Mode - Modern Fintech Palette */
-  --background: oklch(0.98 0 0);
-  --foreground: oklch(0.2 0 0);
+  /* Light Mode - EIDOS "Ink & Iris": calm neutral surfaces, rich violet-indigo primary */
+  --background: oklch(0.986 0.003 270);
+  --foreground: oklch(0.22 0.025 275);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.2 0 0);
+  --card-foreground: oklch(0.22 0.025 275);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.2 0 0);
-  --primary: oklch(0.45 0.25 263);
+  --popover-foreground: oklch(0.22 0.025 275);
+  --primary: oklch(0.54 0.235 280);
   --primary-foreground: oklch(1 0 0);
   --secondary: oklch(0.5 0.18 200);
   --secondary-foreground: oklch(1 0 0);
-  --muted: oklch(0.92 0 0);
-  --muted-foreground: oklch(0.5 0 0);
-  --accent: oklch(0.55 0.25 290);
+  --muted: oklch(0.962 0.005 270);
+  --muted-foreground: oklch(0.5 0.02 272);
+  --accent: oklch(0.58 0.24 295);
   --accent-foreground: oklch(1 0 0);
-  --destructive: oklch(0.5 0.25 25);
+  --destructive: oklch(0.55 0.22 25);
   --destructive-foreground: oklch(1 0 0);
-  --border: oklch(0.92 0 0);
-  --input: oklch(0.96 0 0);
-  --ring: oklch(0.45 0.25 263);
+  --success: oklch(0.6 0.15 160);
+  --success-foreground: oklch(1 0 0);
+  --warning: oklch(0.72 0.16 70);
+  --warning-foreground: oklch(0.22 0.025 275);
+  --border: oklch(0.928 0.007 270);
+  --input: oklch(0.958 0.005 270);
+  --ring: oklch(0.54 0.235 280);
   --chart-1: oklch(0.45 0.25 263);
   --chart-2: oklch(0.5 0.18 200);
   --chart-3: oklch(0.55 0.25 290);
   --chart-4: oklch(0.6 0.2 140);
   --chart-5: oklch(0.65 0.18 30);
-  --radius: 0.875rem;
-  --sidebar: oklch(0.96 0 0);
-  --sidebar-foreground: oklch(0.2 0 0);
-  --sidebar-primary: oklch(0.45 0.25 263);
+  --radius: 1rem;
+  /* Sidebar is always "ink" - a dark anchor in both themes */
+  --sidebar: oklch(0.185 0.028 278);
+  --sidebar-foreground: oklch(0.82 0.015 275);
+  --sidebar-primary: oklch(0.6 0.22 283);
   --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: oklch(0.92 0 0);
-  --sidebar-accent-foreground: oklch(0.45 0.25 263);
-  --sidebar-border: oklch(0.92 0 0);
-  --sidebar-ring: oklch(0.45 0.25 263);
+  --sidebar-accent: oklch(0.24 0.03 278);
+  --sidebar-accent-foreground: oklch(0.95 0.01 275);
+  --sidebar-border: oklch(0.26 0.03 278);
+  --sidebar-ring: oklch(0.6 0.22 283);
   
   /* Shadow System */
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
@@ -46,39 +51,43 @@
 }
 
 .dark {
-  /* Dark Mode - Professional Fintech */
-  --background: oklch(0.15 0 0);
-  --foreground: oklch(0.95 0 0);
-  --card: oklch(0.2 0 0);
-  --card-foreground: oklch(0.95 0 0);
-  --popover: oklch(0.2 0 0);
-  --popover-foreground: oklch(0.95 0 0);
-  --primary: oklch(0.6 0.22 263);
-  --primary-foreground: oklch(0.15 0 0);
+  /* Dark Mode - EIDOS "Ink & Iris" */
+  --background: oklch(0.155 0.02 275);
+  --foreground: oklch(0.95 0.008 272);
+  --card: oklch(0.195 0.024 276);
+  --card-foreground: oklch(0.95 0.008 272);
+  --popover: oklch(0.195 0.024 276);
+  --popover-foreground: oklch(0.95 0.008 272);
+  --primary: oklch(0.68 0.19 283);
+  --primary-foreground: oklch(0.14 0.02 275);
   --secondary: oklch(0.55 0.15 200);
-  --secondary-foreground: oklch(0.15 0 0);
-  --muted: oklch(0.3 0 0);
-  --muted-foreground: oklch(0.7 0 0);
-  --accent: oklch(0.65 0.2 290);
-  --accent-foreground: oklch(0.15 0 0);
-  --destructive: oklch(0.6 0.22 25);
-  --destructive-foreground: oklch(0.15 0 0);
-  --border: oklch(0.3 0 0);
-  --input: oklch(0.25 0 0);
-  --ring: oklch(0.6 0.22 263);
+  --secondary-foreground: oklch(0.14 0.02 275);
+  --muted: oklch(0.255 0.024 276);
+  --muted-foreground: oklch(0.72 0.015 272);
+  --accent: oklch(0.66 0.2 295);
+  --accent-foreground: oklch(0.14 0.02 275);
+  --destructive: oklch(0.62 0.2 25);
+  --destructive-foreground: oklch(0.95 0.008 272);
+  --success: oklch(0.7 0.14 160);
+  --success-foreground: oklch(0.14 0.02 275);
+  --warning: oklch(0.78 0.14 70);
+  --warning-foreground: oklch(0.14 0.02 275);
+  --border: oklch(0.29 0.026 276);
+  --input: oklch(0.25 0.024 276);
+  --ring: oklch(0.68 0.19 283);
   --chart-1: oklch(0.6 0.22 263);
   --chart-2: oklch(0.55 0.15 200);
   --chart-3: oklch(0.65 0.2 290);
   --chart-4: oklch(0.7 0.18 140);
   --chart-5: oklch(0.75 0.16 30);
-  --sidebar: oklch(0.18 0 0);
-  --sidebar-foreground: oklch(0.95 0 0);
-  --sidebar-primary: oklch(0.6 0.22 263);
-  --sidebar-primary-foreground: oklch(0.15 0 0);
-  --sidebar-accent: oklch(0.3 0 0);
-  --sidebar-accent-foreground: oklch(0.65 0.2 290);
-  --sidebar-border: oklch(0.3 0 0);
-  --sidebar-ring: oklch(0.6 0.22 263);
+  --sidebar: oklch(0.13 0.022 278);
+  --sidebar-foreground: oklch(0.82 0.015 275);
+  --sidebar-primary: oklch(0.62 0.21 283);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.2 0.028 278);
+  --sidebar-accent-foreground: oklch(0.95 0.01 275);
+  --sidebar-border: oklch(0.22 0.028 278);
+  --sidebar-ring: oklch(0.62 0.21 283);
   
   /* Shadow System - Dark Mode */
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
@@ -87,8 +96,13 @@
 }
 
 @theme inline {
-  --font-sans: 'Geist', 'Geist Fallback';
-  --font-mono: 'Geist Mono', 'Geist Mono Fallback';
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-sora), var(--font-inter), ui-sans-serif, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, monospace;
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -135,15 +149,15 @@
     @apply bg-background text-foreground;
   }
   
-  /* Typography */
+  /* Typography - Sora display for headings, Inter for body */
   h1 {
-    @apply text-3xl font-bold tracking-tight;
+    @apply font-display text-3xl font-bold tracking-tight;
   }
   h2 {
-    @apply text-2xl font-bold tracking-tight;
+    @apply font-display text-2xl font-bold tracking-tight;
   }
   h3 {
-    @apply text-xl font-semibold tracking-tight;
+    @apply font-display text-xl font-semibold tracking-tight;
   }
   h4 {
     @apply text-lg font-semibold;
@@ -179,5 +193,160 @@
   /* Smooth Transitions */
   .transition-smooth {
     @apply transition-all duration-300 ease-out;
+  }
+
+  /* Accessible focus for keyboard users */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* Numbers that never jiggle */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer utilities {
+  /* EIDOS brand gradient */
+  .bg-brand-gradient {
+    background-image: linear-gradient(135deg, oklch(0.55 0.24 290) 0%, oklch(0.51 0.23 277) 45%, oklch(0.55 0.2 250) 100%);
+  }
+  .text-brand-gradient {
+    background-image: linear-gradient(135deg, oklch(0.55 0.24 290), oklch(0.51 0.23 277));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* Entrance animation with stagger support */
+  @keyframes fade-in-up {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .animate-fade-in-up {
+    animation: fade-in-up 0.4s ease-out both;
+  }
+  .stagger-1 { animation-delay: 40ms; }
+  .stagger-2 { animation-delay: 80ms; }
+  .stagger-3 { animation-delay: 120ms; }
+  .stagger-4 { animation-delay: 160ms; }
+
+  /* ------------------------------------------------------------------
+     Exonoma Brand Identity v2.2 (spec v1.1 §7.13) - network system UIs.
+     Sumi (dark primary), Washi (light bg), Verdigris (primary accent),
+     Ottone (premium accent, sparingly).
+     ------------------------------------------------------------------ */
+  .bg-exo-sumi { background-color: #1a1916; }
+  .text-exo-sumi { color: #1a1916; }
+  .bg-exo-washi { background-color: #f4efe6; }
+  .text-exo-washi { color: #f4efe6; }
+  .bg-exo-verdigris { background-color: #5a8a78; }
+  .text-exo-verdigris { color: #5a8a78; }
+  .border-exo-verdigris { border-color: #5a8a78; }
+  .bg-exo-ottone { background-color: #b08a40; }
+  .text-exo-ottone { color: #b08a40; }
+  .border-exo-ottone { border-color: #b08a40; }
+  /* Tinted variants for badges/chips on both themes */
+  .bg-exo-verdigris-soft { background-color: rgb(90 138 120 / 0.14); }
+  .border-exo-verdigris-soft { border-color: rgb(90 138 120 / 0.35); }
+  .bg-exo-ottone-soft { background-color: rgb(176 138 64 / 0.14); }
+  .border-exo-ottone-soft { border-color: rgb(176 138 64 / 0.35); }
+  .dark .text-exo-verdigris { color: #7dab99; }
+  .dark .text-exo-ottone { color: #cfa95e; }
+  .bg-exo-gradient {
+    background-image: linear-gradient(135deg, #1a1916 0%, #2b3833 55%, #5a8a78 130%);
+  }
+
+  /* Gentle pulse for live indicators (leaderboard, countdown) */
+  @keyframes exo-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.45; }
+  }
+  .animate-exo-pulse {
+    animation: exo-pulse 2s ease-in-out infinite;
+  }
+
+  /* Tree connector reveal */
+  @keyframes grow-in {
+    from { opacity: 0; transform: translateX(-6px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  .animate-grow-in {
+    animation: grow-in 0.3s ease-out both;
+  }
+
+  /* Shimmer sweep for celebratory highlights (progress reached) */
+  @keyframes shimmer-sweep {
+    from { background-position: -200% 0; }
+    to { background-position: 200% 0; }
+  }
+  .animate-shimmer {
+    background-size: 200% 100%;
+    animation: shimmer-sweep 2.4s linear infinite;
+  }
+
+  /* Card hover lift */
+  .hover-lift {
+    transition: transform 0.2s ease-out, box-shadow 0.2s ease-out;
+  }
+  .hover-lift:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 24px -8px rgb(0 0 0 / 0.12);
+  }
+  .dark .hover-lift:hover {
+    box-shadow: 0 12px 24px -8px rgb(0 0 0 / 0.5);
+  }
+
+  /* Layered elevation - the premium card shadow system */
+  .elevation-1 {
+    box-shadow:
+      0 1px 2px rgb(18 16 40 / 0.04),
+      0 4px 12px -2px rgb(18 16 40 / 0.06);
+  }
+  .elevation-2 {
+    box-shadow:
+      0 2px 4px rgb(18 16 40 / 0.05),
+      0 12px 24px -6px rgb(18 16 40 / 0.1);
+  }
+  .dark .elevation-1 {
+    box-shadow:
+      0 1px 2px rgb(0 0 0 / 0.3),
+      0 4px 12px -2px rgb(0 0 0 / 0.35);
+  }
+  .dark .elevation-2 {
+    box-shadow:
+      0 2px 4px rgb(0 0 0 / 0.35),
+      0 12px 24px -6px rgb(0 0 0 / 0.5);
+  }
+
+  /* Section eyebrow label */
+  .eyebrow {
+    @apply text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground;
+  }
+
+  /* Page header pattern */
+  .page-title {
+    @apply font-display text-2xl sm:text-3xl font-bold tracking-tight text-foreground;
+  }
+  .page-subtitle {
+    @apply mt-1.5 text-sm sm:text-base text-muted-foreground;
+  }
+
+  /* Subtle ring highlight on interactive cards */
+  .card-interactive {
+    @apply transition-all duration-200 ease-out hover:border-primary/30;
+  }
+  .card-interactive:hover {
+    transform: translateY(-2px);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-fade-in-up { animation: none; }
+    .animate-exo-pulse, .animate-grow-in, .animate-shimmer { animation: none; }
+    .hover-lift, .hover-lift:hover { transform: none; transition: none; }
+    .card-interactive:hover { transform: none; }
+    * { scroll-behavior: auto !important; }
   }
 }

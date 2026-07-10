@@ -16,13 +16,11 @@ export interface ClientDashboardData {
   };
   stats: {
     accountStatus: string;
-    vpsStatus: string;
     broker: string;
     propFirm: string;
     subscriptionPlan: string;
     subscriptionStatus: string;
     lastSync: string;
-    apiKeysCount: number;
     unreadNotifications: number;
   };
   recentActivity: Array<{
@@ -42,19 +40,6 @@ export function useClientDashboard() {
     try {
       setError(null);
       const response = await apiClient.getClientDashboard();
-      
-      // If user is active in any format, update all service statuses to reflect active state
-      const isUserActive = user?.status === 'active' ;
-      if (isUserActive) {
-        response.stats = {
-          ...response.stats,
-          accountStatus: 'Active',
-          vpsStatus: 'review',
-          broker: 'review',
-          propFirm: 'review',
-        };
-      }
-      
       setDashboardData(response);
     } catch (err: any) {
       console.error('Failed to load dashboard:', err);

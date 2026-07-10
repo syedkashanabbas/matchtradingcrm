@@ -1,345 +1,240 @@
 import { Request, Response } from "express";
 import Stripe from "stripe";
 import {
-  handleSubscriptionCreated,
+  activateSubscriptionFromPayment,
   handleSubscriptionPaymentFailed,
   handleSubscriptionDeleted,
 } from "../modules/subscription/subscription.service";
 import { createAuditEvent } from "../services/audit.service";
-import { createAlert } from "../services/notification.service";
 import { prisma } from "../config/prisma";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
+/**
+ * Stripe webhook (M3, spec §6.1): complete user state transitions.
+ * Mounted with express.raw() so the signature can be verified.
+ */
 export const handleStripeWebhook = async (req: Request, res: Response) => {
   const sig = req.headers["stripe-signature"] as string;
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
   if (!sig || !webhookSecret) {
-    return res.status(400).json({ message: "Missing webhook signature" });
+    return res.status(400).json({ success: false, error: { code: "MISSING_SIGNATURE", message: "Missing webhook signature" } });
   }
 
   let event: Stripe.Event;
-
   try {
     event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
   } catch (err: any) {
     console.error("Webhook signature verification failed:", err.message);
-    return res.status(400).json({ message: `Webhook Error: ${err.message}` });
+    return res.status(400).json({ success: false, error: { code: "INVALID_SIGNATURE", message: err.message } });
   }
 
-  // Log the received event
   console.log(`Received Stripe webhook: ${event.type}`);
 
   try {
     switch (event.type) {
-      // Subscription events
-      case "customer.subscription.created":
-        await handleSubscriptionCreated(event.data.object.id);
+      case "customer.subscription.created": {
+        await handleSubscriptionCreatedOrRenewed(event.data.object as Stripe.Subscription);
         break;
+      }
 
-      case "customer.subscription.updated":
+      case "customer.subscription.updated": {
         await handleSubscriptionUpdated(event.data.object as Stripe.Subscription);
         break;
+      }
 
-      case "customer.subscription.deleted":
-        await handleSubscriptionDeleted(event.data.object.id);
+      case "customer.subscription.deleted": {
+        await handleSubscriptionDeleted((event.data.object as Stripe.Subscription).id);
         break;
+      }
 
-      case "customer.subscription.paused":
-        await handleSubscriptionPaused(event.data.object as Stripe.Subscription);
-        break;
-
-      case "customer.subscription.resumed":
-        await handleSubscriptionResumed(event.data.object as Stripe.Subscription);
-        break;
-
-      // Invoice events
-      case "invoice.created":
-        await handleInvoiceCreated(event.data.object as Stripe.Invoice);
-        break;
-
-      case "invoice.payment_succeeded":
+      case "invoice.payment_succeeded": {
         await handleInvoicePaymentSucceeded(event.data.object as Stripe.Invoice);
         break;
+      }
 
-      case "invoice.payment_failed":
-        console.log(`Invoice payment failed: ${event.data.object.id}`);
+      case "invoice.payment_failed": {
+        const invoice = event.data.object as Stripe.Invoice;
+        const subscriptionId = getInvoiceSubscriptionId(invoice);
+        if (subscriptionId) {
+          await handleSubscriptionPaymentFailed(subscriptionId);
+        }
         break;
+      }
 
-      case "invoice.payment_action_required":
-        await handleInvoicePaymentActionRequired(event.data.object as Stripe.Invoice);
+      case "charge.refunded": {
+        await handleChargeRefunded(event.data.object as Stripe.Charge);
         break;
-
-      case "invoice.upcoming":
-        await handleInvoiceUpcoming(event.data.object as Stripe.Invoice);
-        break;
-
-      case "invoice.marked_uncollectible":
-        await handleInvoiceMarkedUncollectible(event.data.object as Stripe.Invoice);
-        break;
-
-      // Payment intent events
-      case "payment_intent.succeeded":
-        await handlePaymentIntentSucceeded(event.data.object as Stripe.PaymentIntent);
-        break;
-
-      case "payment_intent.payment_failed":
-        await handlePaymentIntentFailed(event.data.object as Stripe.PaymentIntent);
-        break;
-
-      // Customer events
-      case "customer.created":
-        await handleCustomerCreated(event.data.object as Stripe.Customer);
-        break;
-
-      case "customer.updated":
-        await handleCustomerUpdated(event.data.object as Stripe.Customer);
-        break;
-
-      case "customer.deleted":
-        await handleCustomerDeleted(event.data.object as Stripe.Customer);
-        break;
+      }
 
       default:
         console.log(`Unhandled event type: ${event.type}`);
     }
 
-    // Create audit log for webhook processing
     await createAuditEvent({
       action: "WEBHOOK_PROCESSED",
       resource: "STRIPE",
-      details: {
-        eventType: event.type,
-        eventId: event.id,
-        processedAt: new Date(),
-      },
+      details: { eventType: event.type, eventId: event.id },
       severity: "LOW",
     });
 
     res.json({ received: true });
   } catch (error: any) {
     console.error(`Error handling webhook ${event.type}:`, error);
-    
-    // Create audit log for webhook error
     await createAuditEvent({
       action: "WEBHOOK_ERROR",
       resource: "STRIPE",
-      details: {
-        eventType: event.type,
-        eventId: event.id,
-        error: error.message,
-        processedAt: new Date(),
-      },
+      details: { eventType: event.type, eventId: event.id, error: error.message },
       severity: "HIGH",
     });
-
-    res.status(500).json({ message: "Webhook processing failed" });
+    res.status(500).json({ success: false, error: { code: "WEBHOOK_FAILED", message: "Webhook processing failed" } });
   }
 };
 
-// Additional webhook handlers
-async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
-  // Update subscription in database
-  // This would update the subscription status and other details
-  
-  await createAuditEvent({
-    action: "SUBSCRIPTION_UPDATED",
-    resource: "SUBSCRIPTION",
-    details: {
-      subscriptionId: subscription.id,
-      status: subscription.status,
-      currentPeriodEnd: new Date((subscription as any).current_period_end * 1000),
-    },
-    severity: "MEDIUM",
-  });
-}
+// ------------------------------------------------------------------
 
-async function handleSubscriptionPaused(subscription: Stripe.Subscription) {
-  // Handle subscription pause
-  
-  await createAuditEvent({
-    action: "SUBSCRIPTION_PAUSED",
-    resource: "SUBSCRIPTION",
-    details: {
-      subscriptionId: subscription.id,
-      pauseCollection: subscription.pause_collection,
-    },
-    severity: "MEDIUM",
-  });
-}
+const getSubscriptionPeriod = (subscription: Stripe.Subscription) => {
+  const anySub = subscription as any;
+  // Stripe moved period fields onto items in newer API versions; support both.
+  const start = anySub.current_period_start ?? anySub.items?.data?.[0]?.current_period_start;
+  const end = anySub.current_period_end ?? anySub.items?.data?.[0]?.current_period_end;
+  return {
+    periodStart: start ? new Date(start * 1000) : new Date(),
+    periodEnd: end ? new Date(end * 1000) : new Date(Date.now() + 30 * 24 * 3600 * 1000),
+  };
+};
 
-async function handleSubscriptionResumed(subscription: Stripe.Subscription) {
-  // Handle subscription resume
-  
-  await createAuditEvent({
-    action: "SUBSCRIPTION_RESUMED",
-    resource: "SUBSCRIPTION",
-    details: {
-      subscriptionId: subscription.id,
-      status: subscription.status,
-    },
-    severity: "MEDIUM",
-  });
-}
+const getInvoiceSubscriptionId = (invoice: Stripe.Invoice): string | null => {
+  const anyInvoice = invoice as any;
+  const sub = anyInvoice.subscription ?? anyInvoice.parent?.subscription_details?.subscription;
+  if (!sub) return null;
+  return typeof sub === "string" ? sub : sub.id;
+};
 
-async function handleInvoiceCreated(invoice: Stripe.Invoice) {
-  // Handle invoice creation
-  
-  await createAuditEvent({
-    action: "INVOICE_CREATED",
-    resource: "INVOICE",
-    details: {
-      invoiceId: invoice.id,
-      customerId: invoice.customer,
-      amount: invoice.amount_due,
-      currency: invoice.currency,
-    },
-    severity: "LOW",
-  });
-}
-
-async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
-  // Handle successful payment
-  
-  await createAuditEvent({
-    action: "PAYMENT_SUCCEEDED",
-    resource: "INVOICE",
-    details: {
-      invoiceId: invoice.id,
-      customerId: invoice.customer,
-      amount: invoice.amount_paid,
-      currency: invoice.currency,
-    },
-    severity: "MEDIUM",
-  });
-}
-
-async function handleInvoicePaymentActionRequired(invoice: Stripe.Invoice) {
-  // Handle payment action required (3D Secure, etc.)
-  
-  if (invoice.customer) {
-    await createAlert(
-      invoice.customer as string,
-      "PAYMENT_FAILURE",
-      "Payment Action Required",
-      "Your payment requires additional authentication. Please complete the payment process.",
-      "HIGH"
-    );
+const handleSubscriptionCreatedOrRenewed = async (subscription: Stripe.Subscription) => {
+  const userId = subscription.metadata?.userId;
+  const planCode = subscription.metadata?.plan;
+  if (!userId || !planCode) {
+    console.warn(`Subscription ${subscription.id} missing userId/plan metadata - skipping`);
+    return;
   }
-  
-  await createAuditEvent({
-    action: "PAYMENT_ACTION_REQUIRED",
-    resource: "INVOICE",
-    details: {
-      invoiceId: invoice.id,
-      customerId: invoice.customer,
-      amount: invoice.amount_due,
-    },
-    severity: "HIGH",
-  });
-}
 
-async function handleInvoiceUpcoming(invoice: Stripe.Invoice) {
-  // Handle upcoming invoice (send reminder)
-  
-  if (invoice.customer) {
-    await createAlert(
-      invoice.customer as string,
-      "PAYMENT_FAILURE",
-      "Upcoming Payment",
-      `Your payment of ${invoice.amount_due / 100} ${invoice.currency?.toUpperCase()} is due on ${new Date(invoice.due_date! * 1000).toLocaleDateString()}.`,
-      "MEDIUM"
-    );
+  const { periodStart, periodEnd } = getSubscriptionPeriod(subscription);
+  await activateSubscriptionFromPayment({
+    userId,
+    planCode,
+    provider: "stripe",
+    externalRef: subscription.id,
+    periodStart,
+    periodEnd,
+    stripeCustomerId: subscription.customer as string,
+  });
+};
+
+/**
+ * Field sync only: subscription.updated fires for many non-payment changes
+ * (cancel_at_period_end toggles, metadata edits). Activation side effects
+ * (onboarding step, provisioning, service START, commissions) run exclusively
+ * on subscription.created and invoice.payment_succeeded.
+ */
+const handleSubscriptionUpdated = async (subscription: Stripe.Subscription) => {
+  const record = await prisma.subscription.findUnique({
+    where: { stripeSubscriptionId: subscription.id },
+  });
+  if (!record) return;
+
+  const { periodStart, periodEnd } = getSubscriptionPeriod(subscription);
+
+  if (subscription.status === "past_due" || subscription.status === "unpaid") {
+    await handleSubscriptionPaymentFailed(subscription.id);
+  } else if (subscription.status === "active") {
+    await prisma.subscription.update({
+      where: { id: record.id },
+      data: {
+        status: "ACTIVE",
+        plan: subscription.metadata?.plan ?? record.plan,
+        currentPeriodStart: periodStart,
+        currentPeriodEnd: periodEnd,
+      },
+    });
   }
-}
 
-async function handleInvoiceMarkedUncollectible(invoice: Stripe.Invoice) {
-  // Handle uncollectible invoice
-  
+  await prisma.subscription.update({
+    where: { id: record.id },
+    data: { cancelAtPeriodEnd: subscription.cancel_at_period_end ?? false },
+  });
+};
+
+const handleInvoicePaymentSucceeded = async (invoice: Stripe.Invoice) => {
+  const subscriptionId = getInvoiceSubscriptionId(invoice);
+  if (!subscriptionId) return;
+
+  const stripeSubscription = await stripe.subscriptions.retrieve(subscriptionId);
+  const userId = stripeSubscription.metadata?.userId;
+  const planCode = stripeSubscription.metadata?.plan;
+  if (!userId || !planCode) {
+    console.warn(`Invoice ${invoice.id}: subscription ${subscriptionId} missing metadata - skipping`);
+    return;
+  }
+
+  const { periodStart, periodEnd } = getSubscriptionPeriod(stripeSubscription);
+  await activateSubscriptionFromPayment({
+    userId,
+    planCode,
+    provider: "stripe",
+    externalRef: subscriptionId,
+    periodStart,
+    periodEnd,
+    stripeCustomerId: stripeSubscription.customer as string,
+  });
+
+  // Commission engine (M4): one commission per upline ancestor, idempotent per invoice
+  const { processPaymentCommissions } = await import("../modules/commission/commission.service");
+  await processPaymentCommissions({
+    userId,
+    paymentRef: invoice.id ?? `invoice-${subscriptionId}`,
+    provider: "stripe",
+    amount: (invoice.amount_paid ?? 0) / 100,
+    currency: (invoice.currency ?? "eur").toUpperCase(),
+  });
+};
+
+const handleChargeRefunded = async (charge: Stripe.Charge) => {
+  const isFullRefund = charge.amount_refunded >= charge.amount;
+
   await createAuditEvent({
-    action: "INVOICE_UNCOLLECTIBLE",
-    resource: "INVOICE",
+    action: "CHARGE_REFUNDED",
+    resource: "STRIPE",
     details: {
-      invoiceId: invoice.id,
-      customerId: invoice.customer,
-      amount: invoice.amount_due,
+      chargeId: charge.id,
+      refunded: charge.amount_refunded / 100,
+      total: charge.amount / 100,
+      full: isFullRefund,
     },
     severity: "HIGH",
   });
-}
 
-async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent) {
-  // Handle successful payment intent
-  
-  await createAuditEvent({
-    action: "PAYMENT_INTENT_SUCCEEDED",
-    resource: "PAYMENT_INTENT",
-    details: {
-      paymentIntentId: paymentIntent.id,
-      amount: paymentIntent.amount,
-      currency: paymentIntent.currency,
-      customerId: paymentIntent.customer,
-    },
-    severity: "MEDIUM",
-  });
-}
+  const anyCharge = charge as any;
+  const invoiceId = typeof anyCharge.invoice === "string" ? anyCharge.invoice : anyCharge.invoice?.id;
+  if (!invoiceId) return;
 
-async function handlePaymentIntentFailed(paymentIntent: Stripe.PaymentIntent) {
-  // Handle failed payment intent
-  
-  await createAuditEvent({
-    action: "PAYMENT_INTENT_FAILED",
-    resource: "PAYMENT_INTENT",
-    details: {
-      paymentIntentId: paymentIntent.id,
-      amount: paymentIntent.amount,
-      currency: paymentIntent.currency,
-      customerId: paymentIntent.customer,
-      lastPaymentError: paymentIntent.last_payment_error,
-    },
-    severity: "HIGH",
-  });
-}
-
-async function handleCustomerCreated(customer: Stripe.Customer) {
-  // Handle customer creation
-  
-  await createAuditEvent({
-    action: "CUSTOMER_CREATED",
-    resource: "CUSTOMER",
-    details: {
-      customerId: customer.id,
-      email: customer.email,
-    },
-    severity: "LOW",
-  });
-}
-
-async function handleCustomerUpdated(customer: Stripe.Customer) {
-  // Handle customer update
-  
-  await createAuditEvent({
-    action: "CUSTOMER_UPDATED",
-    resource: "CUSTOMER",
-    details: {
-      customerId: customer.id,
-      email: customer.email,
-    },
-    severity: "LOW",
-  });
-}
-
-async function handleCustomerDeleted(customer: Stripe.Customer) {
-  // Handle customer deletion
-  
-  await createAuditEvent({
-    action: "CUSTOMER_DELETED",
-    resource: "CUSTOMER",
-    details: {
-      customerId: customer.id,
-      email: customer.email,
-    },
-    severity: "MEDIUM",
-  });
-}
+  if (isFullRefund) {
+    // Full refund: reverse all linked commissions (M4)
+    const { reverseCommissionsForPayment } = await import("../modules/commission/commission.service");
+    await reverseCommissionsForPayment(invoiceId);
+  } else {
+    // Partial refund: commissions are NOT auto-reversed - alert admins to
+    // adjust manually (proportional reversal needs a human decision).
+    const admins = await prisma.user.findMany({ where: { role: "ADMIN" }, select: { id: true } });
+    await prisma.alert.createMany({
+      data: admins.map(admin => ({
+        userId: admin.id,
+        type: "COMMISSION" as const,
+        title: "Partial refund - review commissions",
+        message: `Charge ${charge.id} (invoice ${invoiceId}) was partially refunded (${(charge.amount_refunded / 100).toFixed(2)} of ${(charge.amount / 100).toFixed(2)}). Linked commissions were NOT auto-reversed - review them manually.`,
+        severity: "HIGH" as const,
+      })),
+    });
+  }
+};

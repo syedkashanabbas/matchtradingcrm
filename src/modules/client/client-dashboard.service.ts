@@ -4,14 +4,9 @@ export const getClientDashboard = async (userId: string) => {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     include: {
-      apiKeys: true,
       notifications: {
         where: { isRead: false },
         take: 5,
-        orderBy: { createdAt: 'desc' }
-      },
-      vpsConfigs: {
-        take: 1,
         orderBy: { createdAt: 'desc' }
       },
       brokerAccounts: {
@@ -19,6 +14,11 @@ export const getClientDashboard = async (userId: string) => {
         orderBy: { createdAt: 'desc' }
       },
       propAccounts: {
+        where: { isActive: true },
+        take: 1,
+        orderBy: { createdAt: 'desc' }
+      },
+      subscriptions: {
         take: 1,
         orderBy: { createdAt: 'desc' }
       },
@@ -30,12 +30,9 @@ export const getClientDashboard = async (userId: string) => {
   }
 
   // Get subscription info
-  const subscriptionStatus = user.status === 'ACTIVE' ? 'active' : 'inactive';
-  const plan = user.role === 'ADMIN' ? 'Enterprise' : 'Pro';
-
-  // Get real VPS status
-  const vpsConfig = user.vpsConfigs[0];
-  const vpsStatus = vpsConfig ? 'Connected' : 'Not Connected';
+  const subscription = user.subscriptions[0];
+  const subscriptionStatus = subscription?.status === 'ACTIVE' ? 'active' : 'inactive';
+  const plan = subscription?.plan ?? 'None';
 
   // Get real broker info
   const brokerAccount = user.brokerAccounts[0];
@@ -57,13 +54,11 @@ export const getClientDashboard = async (userId: string) => {
     },
     stats: {
       accountStatus: user.status,
-      vpsStatus: vpsStatus,
       broker: brokerName,
       propFirm: propFirmName,
       subscriptionPlan: plan,
       subscriptionStatus,
       lastSync: new Date().toLocaleString(),
-      apiKeysCount: user.apiKeys.length,
       unreadNotifications: user.notifications.length,
     },
     recentActivity: user.notifications.map(notif => ({

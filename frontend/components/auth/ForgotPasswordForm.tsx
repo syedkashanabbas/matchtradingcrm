@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { AlertCircle, ArrowLeft, CheckCircle2 } from 'lucide-react';
 
 export function ForgotPasswordForm() {
   const router = useRouter();
@@ -33,10 +34,10 @@ export function ForgotPasswordForm() {
       }
 
       setSuccess('Reset code sent to your email');
-      
+
       // Store email in sessionStorage for next steps
       sessionStorage.setItem('resetEmail', email);
-      
+
       // Redirect to OTP verification page after 2 seconds
       setTimeout(() => {
         router.push('/verify-otp');
@@ -50,15 +51,17 @@ export function ForgotPasswordForm() {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-5">
       {error && (
-        <div className="rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-3 text-sm text-red-700 dark:text-red-400">
+        <div className="flex items-center gap-3 rounded-xl border border-destructive/20 bg-destructive/10 p-4 text-sm font-medium text-destructive">
+          <AlertCircle className="h-5 w-5 shrink-0" />
           {error}
         </div>
       )}
 
       {success && (
-        <div className="rounded-lg border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20 p-3 text-sm text-green-700 dark:text-green-400">
+        <div className="flex items-center gap-3 rounded-xl border border-success/25 bg-success/10 p-4 text-sm font-medium text-success">
+          <CheckCircle2 className="h-5 w-5 shrink-0" />
           {success}
         </div>
       )}
@@ -76,17 +79,17 @@ export function ForgotPasswordForm() {
           onChange={(e) => setEmail(e.target.value)}
           disabled={isLoading}
           required
-          className="w-full rounded-lg border border-input bg-background px-4 py-2.5 text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all disabled:opacity-50"
+          className="h-11 w-full rounded-xl border border-input bg-background px-4 text-sm text-foreground placeholder:text-muted-foreground transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50"
         />
       </div>
 
       <button
         type="submit"
         disabled={isLoading || !email}
-        className="w-full rounded-lg bg-primary px-4 py-2.5 font-medium text-primary-foreground transition-all hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+        className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/25 transition-all hover:bg-primary/90 hover:shadow-primary/30 disabled:cursor-not-allowed disabled:opacity-50"
       >
         {isLoading && (
-          <div className="h-4 w-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin" />
+          <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
         )}
         {isLoading ? 'Sending...' : 'Send Reset Code'}
       </button>
@@ -94,9 +97,10 @@ export function ForgotPasswordForm() {
       <div className="text-center">
         <Link
           href="/login"
-          className="text-sm text-muted-foreground hover:text-primary transition-colors"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-primary"
         >
-          ← Back to Sign In
+          <ArrowLeft className="h-4 w-4" />
+          Back to Sign In
         </Link>
       </div>
     </form>

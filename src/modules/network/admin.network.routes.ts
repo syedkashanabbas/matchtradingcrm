@@ -8,7 +8,8 @@ import {
   getOrphans,
   getAllClientNetworks,
   assignUpline,
-  changeUpline
+  changeUpline,
+  getMemberships,
 } from './admin.network.controller';
 
 const router = Router();
@@ -18,6 +19,7 @@ router.use(authenticate);
 router.use(requireAdmin);
 
 router.get('/overview', getOverview);
+router.get('/memberships', getMemberships);
 router.get('/all-networks', getAllClientNetworks);
 router.get('/user/:userId', getUserNetworkInfo);
 router.get('/user/:userId/tree', getUserTree);

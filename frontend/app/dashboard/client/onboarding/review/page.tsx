@@ -1,544 +1,274 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ChevronLeft, Check, AlertCircle, Server, Briefcase, Building, CreditCard } from 'lucide-react';
-import { apiClient } from '@/lib/api';
+import { Check, AlertCircle, Building, CreditCard, TrendingUp, Pencil, PartyPopper } from 'lucide-react';
+import { apiClient, type OnboardingStatus } from '@/lib/api';
 import { useAuthContext } from '@/lib/auth-context';
-
-interface OnboardingData {
-  subscription?: {
-    plan: string;
-    price: string;
-    status: string;
-  };
-  vps?: {
-    provider: string;
-    ipAddress: string;
-    operatingSystem: string;
-    status: string;
-  };
-  broker?: {
-    brokerName: string;
-    mt5AccountNumber: string;
-    mt5Server: string;
-    status: string;
-  };
-  prop?: {
-    firmName: string;
-    mt5AccountNumber: string;
-    mt5Server: string;
-    phase: string;
-    status: string;
-  };
-}
-
-// Helper function to get correct price based on plan
-const getPlanPrice = (plan: string): string => {
-  switch (plan?.toUpperCase()) {
-    case 'FREE':
-      return '$0/month';
-    case 'PRO':
-      return '$99/month';
-    case 'ENTERPRISE':
-      return '$299/month';
-    default:
-      return '$0/month';
-  }
-};
+import { OnboardingStepper, type WizardStepId } from '@/components/onboarding/OnboardingStepper';
 
 export default function ClientOnboardingReviewPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user, isAuthenticated, updateApiKeys } = useAuthContext();
-  const [isLoading, setIsLoading] = useState(false);
-  const [onboardingData, setOnboardingData] = useState<OnboardingData | null>(null);
-  const [apiKey, setApiKey] = useState('');
-  const [showApiKey, setShowApiKey] = useState(false);
-  const [paymentSuccess, setPaymentSuccess] = useState(false);
+  const { user, isAuthenticated } = useAuthContext();
+  const [status, setStatus] = useState<OnboardingStatus | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const paymentJustSucceeded = searchParams.get('success') === 'true';
+
+  const loadStatus = useCallback(async () => {
+    try {
+      setError(null);
+      const response = await apiClient.getOnboardingStatus();
+      setStatus(response.data ?? null);
+    } catch (err: any) {
+      setError(err.message || 'Failed to load onboarding status');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (!isAuthenticated) {
       router.push('/login');
       return;
     }
-
-    // Check if user is admin - admins should not access onboarding
     if (user?.role === 'ADMIN') {
       router.push('/dashboard/admin');
       return;
     }
+    loadStatus();
+  }, [isAuthenticated, user, router, loadStatus]);
 
-    // Check for successful payment
-    const success = searchParams.get('success');
-    if (success === 'true') {
-      setPaymentSuccess(true);
-    }
+  // After Stripe checkout the webhook completes the payment step asynchronously:
+  // poll a few times until it lands.
+  useEffect(() => {
+    if (!paymentJustSucceeded || !status || status.steps.payment.status === 'COMPLETED') return;
+    const timer = setInterval(loadStatus, 3000);
+    const stop = setTimeout(() => clearInterval(timer), 60000);
+    return () => {
+      clearInterval(timer);
+      clearTimeout(stop);
+    };
+  }, [paymentJustSucceeded, status, loadStatus]);
 
-    loadOnboardingData();
-  }, [isAuthenticated, user, router, searchParams]);
+  const completedSteps: WizardStepId[] = [];
+  if (status?.steps.payment.status === 'COMPLETED') completedSteps.push('payment');
+  if (status?.steps.broker.status === 'COMPLETED') completedSteps.push('broker');
+  if (status?.steps.prop.status === 'COMPLETED') completedSteps.push('prop');
 
-  const loadOnboardingData = async () => {
-    try {
-      // Get selected plan data from sessionStorage
-      const storedPlan = sessionStorage.getItem('selectedPlan');
-      let selectedPlanData = null;
-      
-      if (storedPlan) {
-        try {
-          selectedPlanData = JSON.parse(storedPlan);
-        } catch (error) {
-          console.error('Error parsing stored plan data:', error);
-        }
-      }
+  const allComplete = status?.completed ?? false;
 
-      // Load subscription info from backend (for status)
-      const subscription = await apiClient.getSubscriptionInfo();
-      
-      // Load VPS configs
-      const vpsResponse = await apiClient.getVpsList();
-      console.log('VPS Response:', vpsResponse);
-      const vps = Array.isArray(vpsResponse) ? vpsResponse[0] : (vpsResponse as any).data?.[0];
-      console.log('VPS Data:', vps);
-
-      // Load broker accounts
-      const brokerResponse = await apiClient.getBrokerList();
-      console.log('Broker Response:', brokerResponse);
-      const broker = Array.isArray(brokerResponse) ? brokerResponse[0] : (brokerResponse as any).data?.[0];
-      console.log('Broker Data:', broker);
-
-      // Use stored plan data for display, fallback to backend data
-      const planName = selectedPlanData?.name || (subscription as any).plan;
-      const planPrice = selectedPlanData?.price || getPlanPrice((subscription as any).plan);
-
-      const onboardingData: OnboardingData = {
-        subscription: {
-          plan: planName,
-          price: planPrice,
-          status: (subscription as any).status
-        },
-        vps: vps ? {
-          provider: vps.provider,
-          ipAddress: vps.ipAddress,
-          operatingSystem: vps.operatingSystem || 'Windows Server 2022',
-          status: 'review'
-        } : undefined,
-        broker: broker ? {
-          brokerName: broker.brokerName,
-          mt5AccountNumber: broker.mt5AccountNumber,
-          mt5Server: broker.mt5Server,
-          status: 'review'
-        } : undefined
-      };
-
-      // Load prop accounts (optional - not part of main flow)
-      try {
-        const propResponse = await apiClient.getPropList();
-        const prop = Array.isArray(propResponse) ? propResponse[0] : (propResponse as any).data?.[0];
-        if (prop) {
-          onboardingData.prop = {
-            firmName: prop.firmName,
-            mt5AccountNumber: prop.mt5AccountNumber,
-            mt5Server: prop.mt5Server,
-            phase: prop.phase,
-            status: 'review'
-          };
-        }
-      } catch (error) {
-        // Prop firm is optional, ignore errors
-        console.log('Prop firm not configured (optional)');
-      }
-
-      setOnboardingData(onboardingData);
-    } catch (error) {
-      console.error('Error loading onboarding data:', error);
-    }
-  };
-
-  const handleConfirm = async () => {
-    setIsLoading(true);
-    try {
-      // Get stored plan data
-      const storedPlan = sessionStorage.getItem('selectedPlan');
-      let selectedPlanData = null;
-      
-      if (storedPlan) {
-        try {
-          selectedPlanData = JSON.parse(storedPlan);
-        } catch (error) {
-          console.error('Error parsing stored plan data:', error);
-        }
-      }
-
-      // Check current subscription status
-      const subscription = await apiClient.getSubscriptionInfo();
-      const currentStatus = (subscription as any).status;
-      
-      console.log('Stored plan data:', selectedPlanData);
-      console.log('Current subscription status:', currentStatus);
-      
-      // If user already has active subscription, generate API key and complete
-      if (currentStatus === 'ACTIVE') {
-        console.log('User already has active subscription - generating API key');
-        await generateApiKeyAndComplete();
-      } else if (!selectedPlanData || selectedPlanData.id === 'free') {
-        // For FREE plan, call API to save subscription to database first
-        console.log('Creating FREE plan subscription - saving to database first');
-        const response = await apiClient.createCheckoutSession('free');
-        if (response.message === 'Free plan activated') {
-          console.log('FREE plan saved to database successfully');
-          await generateApiKeyAndComplete();
-        } else {
-          console.error('Failed to save FREE plan to database:', response);
-          // Fallback: generate API key and complete
-          await generateApiKeyAndComplete();
-        }
-      } else {
-        // For paid plans that need payment, redirect to Stripe
-        console.log('Payment needed for plan:', selectedPlanData.id);
-        const response = await apiClient.createCheckoutSession(selectedPlanData.id);
-        if (response.url) {
-          // Redirect to Stripe checkout
-          window.location.href = response.url;
-        } else {
-          // Fallback: generate API key and complete
-          await generateApiKeyAndComplete();
-        }
-      }
-    } catch (error) {
-      console.error('Error processing payment:', error);
-      // Fallback: generate API key and complete
-      await generateApiKeyAndComplete();
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const generateApiKeyAndComplete = async () => {
-    try {
-      // Generate API key
-      const response = await apiClient.createApiKey('Onboarding API Key');
-      console.log('API Key Response:', response);
-      
-      // Extract the actual API key string from the response
-      let apiKeyString = 'Generated API Key';
-      if (response && typeof response === 'object') {
-        // Handle wrapped response: {message, apiKey: {id, name, key, createdAt}}
-        if ((response as any).apiKey && (response as any).apiKey.key) {
-          apiKeyString = (response as any).apiKey.key;
-        }
-        // Handle direct response: {id, name, key, createdAt}
-        else if ((response as any).key) {
-          apiKeyString = (response as any).key;
-        }
-        // Fallback to other possible fields
-        else {
-          apiKeyString = (response as any).apiKey || (response as any).id || 'Generated API Key';
-        }
-      } else if (typeof response === 'string') {
-        apiKeyString = response;
-      }
-      
-      console.log('Extracted API Key:', apiKeyString);
-      setApiKey(apiKeyString);
-      
-      // Add the new API key to the user's API keys list
-      const newApiKey = {
-        id: Date.now().toString(),
-        name: 'Onboarding API Key',
-        key: apiKeyString,
-        lastFour: apiKeyString.slice(-4),
-        prefix: apiKeyString.substring(0, 8) + '...',
-        environment: 'Live',
-        status: 'active',
-        created: new Date().toISOString(),
-        lastUsed: new Date().toISOString(),
-      };
-      
-      updateApiKeys(newApiKey);
-      setShowApiKey(true);
-    } catch (error) {
-      console.error('Error generating API key:', error);
-    }
-  };
-
-  const handleBack = () => {
-    router.push('/dashboard/client/onboarding/payment');
-  };
-
-  const handleComplete = async () => {
-    setIsLoading(true);
-    try {
-      // Clean up sessionStorage
-      sessionStorage.removeItem('selectedPlan');
-      
-      // Show success message
-      alert('Congratulations! You have successfully completed all onboarding steps. Your account is now fully set up and ready to use. You can now access all features of the platform.');
-      
-      // Wait a moment before redirecting
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      router.push('/dashboard/client');
-    } catch (error) {
-      console.error('Error completing onboarding:', error);
-      alert('There was an error completing your setup. Please try again.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-foreground">Review Your Configuration</h1>
-        <p className="text-muted-foreground mt-2">
-          Review all your settings before completing the setup
+    <div className="mx-auto max-w-3xl space-y-8">
+      <div className="animate-fade-in-up">
+        <p className="eyebrow">Onboarding</p>
+        <h1 className="page-title">Review Your Setup</h1>
+        <p className="page-subtitle">
+          Check your details below. You can edit any step before finishing.
         </p>
       </div>
 
-      {/* Payment Success Message */}
-      {paymentSuccess && (
-        <div className="p-4 rounded-lg bg-green-50 text-green-800 border border-green-200 flex items-center gap-3">
-          <Check className="h-5 w-5" />
-          <span className="font-medium">Payment successful! Your subscription is now active.</span>
+      <div className="animate-fade-in-up stagger-1">
+        <OnboardingStepper current="review" completed={completedSteps} />
+      </div>
+
+      {error && (
+        <div className="flex items-center gap-3 rounded-xl border border-destructive/20 bg-destructive/10 p-4 text-sm font-medium text-destructive">
+          <AlertCircle className="h-5 w-5 shrink-0" />
+          <span>{error}</span>
         </div>
       )}
 
-      {/* Progress */}
-      <div className="bg-muted/50 rounded-lg p-4">
-        <div className="flex items-center justify-center">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <div className="h-8 w-8 rounded-full bg-muted text-muted-foreground flex items-center justify-center text-sm font-semibold">
-                1
-              </div>
-              <span className="text-sm text-muted-foreground">VPS</span>
+      {paymentJustSucceeded && status?.steps.payment.status !== 'COMPLETED' && (
+        <div className="flex items-center gap-3 rounded-xl border border-primary/20 bg-primary/10 p-4 text-sm font-medium text-primary">
+          <div className="h-4 w-4 shrink-0 animate-spin rounded-full border-b-2 border-primary" />
+          <span>Confirming your payment… this usually takes a few seconds.</span>
+        </div>
+      )}
+
+      {/* Payment */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <CreditCard className="h-[18px] w-[18px]" aria-hidden="true" />
             </div>
-            <div className="h-1 w-16 bg-primary" />
-            <div className="flex items-center gap-2">
-              <div className="h-8 w-8 rounded-full bg-muted text-muted-foreground flex items-center justify-center text-sm font-semibold">
-                2
-              </div>
-              <span className="text-sm text-muted-foreground">Broker</span>
-            </div>
-            <div className="h-1 w-16 bg-primary" />
-            <div className="flex items-center gap-2">
-              <div className="h-8 w-8 rounded-full bg-muted text-muted-foreground flex items-center justify-center text-sm font-semibold">
-                3
-              </div>
-              <span className="text-sm text-muted-foreground">Prop Firm</span>
-            </div>
-            <div className="h-1 w-16 bg-primary" />
-            <div className="flex items-center gap-2">
-              <div className="h-8 w-8 rounded-full bg-muted text-muted-foreground flex items-center justify-center text-sm font-semibold">
-                4
-              </div>
-              <span className="text-sm text-muted-foreground">Payment</span>
-            </div>
-            <div className="h-1 w-16 bg-primary" />
-            <div className="flex items-center gap-2">
-              <div className="h-8 w-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-sm font-semibold">
-                5
-              </div>
-              <span className="text-sm font-medium">Review</span>
-            </div>
+            <CardTitle className="font-display text-lg">Subscription</CardTitle>
+            {status?.steps.payment.status === 'COMPLETED' ? (
+              <Badge className="border-success/25 bg-success/15 text-success">
+                <Check className="mr-1 h-3 w-3" /> Active
+              </Badge>
+            ) : (
+              <Badge variant="secondary">Pending</Badge>
+            )}
           </div>
-        </div>
-      </div>
-
-      {/* Configuration Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Subscription */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CreditCard className="h-5 w-5" />
-              Subscription
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {onboardingData?.subscription ? (
-              <div className="space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Plan:</span>
-                  <span className="font-medium">{onboardingData.subscription.plan}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Price:</span>
-                  <span className="font-medium">{onboardingData.subscription.price}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Status:</span>
-                  <Badge variant={onboardingData.subscription.status === 'active' ? 'default' : 'secondary'}>
-                    {onboardingData.subscription.status}
-                  </Badge>
-                </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => router.push('/dashboard/client/onboarding/payment')}
+          >
+            <Pencil className="h-4 w-4 mr-1" /> Edit
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {status?.steps.payment.data ? (
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <p className="text-muted-foreground">Plan</p>
+                <p className="font-medium">{status.steps.payment.data.plan}</p>
               </div>
-            ) : (
-              <p className="text-muted-foreground">No subscription configured</p>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* VPS */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Server className="h-5 w-5" />
-              VPS Configuration
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {onboardingData?.vps ? (
-              <div className="space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Provider:</span>
-                  <span className="font-medium">{onboardingData.vps.provider}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">IP Address:</span>
-                  <span className="font-medium">{onboardingData.vps.ipAddress}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">OS:</span>
-                  <span className="font-medium">{onboardingData.vps.operatingSystem}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Status:</span>
-                  <Badge variant={onboardingData.vps.status === 'active' ? 'default' : 'secondary'}>
-                    {onboardingData.vps.status}
-                  </Badge>
-                </div>
+              <div>
+                <p className="text-muted-foreground">Renews</p>
+                <p className="font-medium">
+                  {new Date(status.steps.payment.data.currentPeriodEnd).toLocaleDateString()}
+                </p>
               </div>
-            ) : (
-              <p className="text-muted-foreground">No VPS configured</p>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Broker */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Briefcase className="h-5 w-5" />
-              Broker Account
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {onboardingData?.broker ? (
-              <div className="space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Broker:</span>
-                  <span className="font-medium">{onboardingData.broker.brokerName}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Account:</span>
-                  <span className="font-medium">{onboardingData.broker.mt5AccountNumber}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Server:</span>
-                  <span className="font-medium">{onboardingData.broker.mt5Server}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Status:</span>
-                  <Badge variant={onboardingData.broker.status === 'active' ? 'default' : 'secondary'}>
-                    {onboardingData.broker.status}
-                  </Badge>
-                </div>
-              </div>
-            ) : (
-              <p className="text-muted-foreground">No broker configured</p>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Prop Firm - Optional */}
-        {onboardingData?.prop && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Building className="h-5 w-5" />
-                Prop Firm Account (Optional)
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Firm:</span>
-                  <span className="font-medium">{onboardingData.prop.firmName}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Account:</span>
-                  <span className="font-medium">{onboardingData.prop.mt5AccountNumber}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Phase:</span>
-                  <span className="font-medium">{onboardingData.prop.phase}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Status:</span>
-                  <Badge variant={onboardingData.prop.status === 'Active' ? 'default' : 'secondary'}>
-                    {onboardingData.prop.status}
-                  </Badge>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-      </div>
-
-      {/* API Key Display */}
-      {showApiKey && (
-        <Card className="border-green-200 bg-green-50 dark:bg-green-900/20">
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-2 mb-3">
-              <Check className="h-5 w-5 text-green-600" />
-              <h3 className="font-semibold text-green-800 dark:text-green-200">API Key Generated</h3>
             </div>
-            <div className="bg-white dark:bg-gray-800 p-3 rounded-lg border">
-              <code className="text-sm font-mono text-green-700 dark:text-green-300">{apiKey}</code>
-            </div>
-            <p className="text-sm text-green-700 dark:text-green-300 mt-2">
-              Save this API key securely. You won't be able to see it again.
-            </p>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Navigation */}
-      <div className="flex justify-between">
-        <Button
-          variant="outline"
-          onClick={handleBack}
-          disabled={isLoading}
-          className="gap-2"
-        >
-          <ChevronLeft className="h-4 w-4" /> Back
-        </Button>
-        
-        <div className="flex gap-3">
-          {!showApiKey ? (
-            <Button
-              onClick={handleConfirm}
-              disabled={isLoading}
-              className="gap-2"
-            >
-              {isLoading ? 'Processing...' : 'Confirm & Complete Setup'} <Check className="h-4 w-4" />
-            </Button>
           ) : (
-            <Button
-              onClick={handleComplete}
-              className="gap-2"
-            >
-              Go to Dashboard <Check className="h-4 w-4" />
-            </Button>
+            <p className="text-sm text-muted-foreground">No subscription yet.</p>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Broker */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <TrendingUp className="h-[18px] w-[18px]" aria-hidden="true" />
+            </div>
+            <CardTitle className="font-display text-lg">Broker Account</CardTitle>
+            {status?.steps.broker.status === 'COMPLETED' ? (
+              <Badge className="border-success/25 bg-success/15 text-success">
+                <Check className="mr-1 h-3 w-3" /> Saved
+              </Badge>
+            ) : (
+              <Badge variant="secondary">Pending</Badge>
+            )}
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => router.push('/dashboard/client/onboarding/broker')}
+          >
+            <Pencil className="h-4 w-4 mr-1" /> Edit
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {status?.steps.broker.data ? (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+              <div>
+                <p className="text-muted-foreground">Broker</p>
+                <p className="font-medium">{status.steps.broker.data.brokerName}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Account</p>
+                <p className="font-medium">{status.steps.broker.data.mt5AccountNumber}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Server</p>
+                <p className="font-medium">{status.steps.broker.data.mt5Server}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Password</p>
+                <p className="font-medium">{status.steps.broker.data.mt5Password ?? '••••••'}</p>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">No broker account yet.</p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Prop */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <Building className="h-[18px] w-[18px]" aria-hidden="true" />
+            </div>
+            <CardTitle className="font-display text-lg">Prop Firm Account</CardTitle>
+            {status?.steps.prop.status === 'COMPLETED' ? (
+              <Badge className="border-success/25 bg-success/15 text-success">
+                <Check className="mr-1 h-3 w-3" /> Saved
+              </Badge>
+            ) : (
+              <Badge variant="secondary">Pending</Badge>
+            )}
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => router.push('/dashboard/client/onboarding/prop')}
+          >
+            <Pencil className="h-4 w-4 mr-1" /> Edit
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {status?.steps.prop.data ? (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+              <div>
+                <p className="text-muted-foreground">Firm</p>
+                <p className="font-medium">{status.steps.prop.data.firmName}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Account</p>
+                <p className="font-medium">{status.steps.prop.data.mt5AccountNumber}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Server</p>
+                <p className="font-medium">{status.steps.prop.data.mt5Server}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Phase</p>
+                <p className="font-medium">{status.steps.prop.data.phase}</p>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">No prop firm account yet.</p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Finish */}
+      {allComplete ? (
+        <Card className="border-success/25 bg-success/[0.06] animate-fade-in-up">
+          <CardContent className="flex flex-col items-center justify-between gap-5 py-6 sm:flex-row">
+            <div className="flex items-center gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-success/15 text-success">
+                <PartyPopper className="h-6 w-6" aria-hidden="true" />
+              </div>
+              <div>
+                <p className="font-display font-semibold text-foreground">You're all set!</p>
+                <p className="mt-0.5 text-sm text-muted-foreground">
+                  Your service is being provisioned automatically. Track its status on your dashboard.
+                </p>
+              </div>
+            </div>
+            <Button onClick={() => router.push('/dashboard/client')} size="lg">
+              Go to Dashboard
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="flex items-center gap-3 rounded-xl border border-warning/25 bg-warning/10 p-4 text-sm font-medium text-warning">
+          <AlertCircle className="h-5 w-5 shrink-0" />
+          <span>Complete the pending steps above to finish your onboarding.</span>
         </div>
-      </div>
+      )}
     </div>
   );
 }

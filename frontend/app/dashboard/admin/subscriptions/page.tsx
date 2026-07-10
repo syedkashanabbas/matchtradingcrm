@@ -1,214 +1,145 @@
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
-import { CreditCard, Search, MoreVertical } from 'lucide-react';
-import { StatusBadge } from '@/components/shared/StatusBadge';
+import Link from 'next/link';
+import { Bitcoin, CreditCard, Search } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { LoadingSkeleton } from '@/components/shared/LoadingSkeleton';
 import { apiClient } from '@/lib/api';
 
-interface Subscription {
+interface AdminSubscription {
   id: string;
-  userId: string;
-  userName: string;
-  userEmail: string;
+  provider: 'stripe' | 'coingate';
   plan: string;
-  price: string;
   status: string;
-  nextBillingDate?: string;
-  paymentMethod?: string;
-  stripeSubscriptionId?: string;
+  currentPeriodStart: string;
+  currentPeriodEnd: string;
+  cancelAtPeriodEnd: boolean;
+  gracePeriodEnd: string | null;
   createdAt: string;
+  user: { id: string; firstName: string; lastName: string; email: string };
 }
 
+const statusBadge = (status: string) => {
+  switch (status) {
+    case 'ACTIVE':
+      return <Badge className="bg-success/15 text-success border-success/25">Active</Badge>;
+    case 'PAST_DUE':
+      return <Badge className="bg-warning/15 text-warning border-warning/25">Past due</Badge>;
+    case 'UNPAID':
+    case 'CANCELED':
+      return <Badge className="bg-destructive/10 text-destructive border-destructive/20">{status === 'UNPAID' ? 'Unpaid' : 'Canceled'}</Badge>;
+    default:
+      return <Badge variant="secondary">{status}</Badge>;
+  }
+};
+
 export default function AdminSubscriptionsPage() {
-  const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
+  const [subscriptions, setSubscriptions] = useState<AdminSubscription[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortField, setSortField] = useState<'userName' | 'plan' | 'status'>('userName');
 
   useEffect(() => {
-    loadSubscriptions();
+    apiClient
+      .getAdminSubscriptions()
+      .then(response => setSubscriptions((response.data as AdminSubscription[]) ?? []))
+      .catch(error => console.error('Failed to load subscriptions:', error))
+      .finally(() => setIsLoading(false));
   }, []);
 
-  const loadSubscriptions = async () => {
-    try {
-      // Get all users with their subscription info
-      const usersResponse = await apiClient.getAllUsers();
-      const users = usersResponse.users || [];
-
-      // For each user, get their subscription info
-      const subscriptionPromises = users.map(async (user: any) => {
-        try {
-          const subscriptionInfo = await apiClient.getSubscriptionInfo();
-          
-          // DEBUG: Log API response to validate correct data
-          console.log('🔍 DEBUG - Admin Subscriptions API Response:');
-          console.log('User:', user.name, '(', user.email, ')');
-          console.log('Subscription Info:', subscriptionInfo);
-          console.log('Plan from API:', (subscriptionInfo as any).plan);
-          console.log('Price from API:', (subscriptionInfo as any).price);
-          
-          return {
-            id: user.id,
-            userId: user.id,
-            userName: user.name,
-            userEmail: user.email,
-            plan: (subscriptionInfo as any).plan,
-            price: (subscriptionInfo as any).price || '$0/month', // Use price from API response
-            status: (subscriptionInfo as any).status,
-            nextBillingDate: (subscriptionInfo as any).nextBillingDate,
-            paymentMethod: 'Stripe',
-            stripeSubscriptionId: (subscriptionInfo as any).stripeSubscriptionId || 'N/A',
-            createdAt: user.signupDate
-          };
-        } catch (error) {
-          // User might not have subscription, return default
-          return {
-            id: user.id,
-            userId: user.id,
-            userName: user.name,
-            userEmail: user.email,
-            plan: 'FREE',
-            price: '$0/month', // Default for users without subscription
-            status: 'inactive',
-            paymentMethod: 'N/A',
-            stripeSubscriptionId: 'N/A',
-            createdAt: user.signupDate
-          };
-        }
-      });
-
-      const subscriptionData = await Promise.all(subscriptionPromises);
-      setSubscriptions(subscriptionData);
-    } catch (error) {
-      console.error('Error loading subscriptions:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const filteredSubscriptions = useMemo(() => {
-    return subscriptions
-      .filter(sub =>
-        (sub.userName?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
-        (sub.userEmail?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
-        (sub.plan?.toLowerCase() || '').includes(searchQuery.toLowerCase())
-      )
-      .sort((a, b) => {
-        if (sortField === 'userName') {
-          return (a.userName || '').localeCompare(b.userName || '');
-        } else if (sortField === 'plan') {
-          return (a.plan || '').localeCompare(b.plan || '');
-        } else {
-          return (a.status || '').localeCompare(b.status || '');
-        }
-      });
-  }, [subscriptions, searchQuery, sortField]);
+  const filtered = useMemo(() => {
+    const query = searchQuery.toLowerCase();
+    return subscriptions.filter(
+      subscription =>
+        `${subscription.user.firstName} ${subscription.user.lastName}`.toLowerCase().includes(query) ||
+        subscription.user.email.toLowerCase().includes(query) ||
+        subscription.plan.toLowerCase().includes(query)
+    );
+  }, [subscriptions, searchQuery]);
 
   if (isLoading) {
     return (
-      <div className="space-y-6">
-        <div className="animate-pulse">
-          <div className="h-8 bg-muted rounded w-1/4 mb-4"></div>
-          <div className="h-32 bg-muted rounded"></div>
-        </div>
+      <div className="space-y-8">
+        <LoadingSkeleton variant="card" />
+        <LoadingSkeleton variant="card" count={3} />
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-foreground flex items-center gap-3">
-          <div className="h-10 w-10 rounded-lg bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
-            <CreditCard className="h-6 w-6 text-purple-600 dark:text-purple-400" />
-          </div>
-          Subscriptions Management
-        </h1>
-        <p className="text-muted-foreground mt-2">
-          {subscriptions.length} total subscriptions
+    <div className="space-y-8">
+      <div className="animate-fade-in-up">
+        <p className="eyebrow">Billing</p>
+        <h1 className="page-title">Subscriptions</h1>
+        <p className="page-subtitle">
+          {subscriptions.length} subscription{subscriptions.length === 1 ? '' : 's'} across all clients
         </p>
       </div>
 
-      {/* Subscriptions Table */}
-      <div className="rounded-2xl border border-border bg-card shadow-soft-md overflow-hidden">
-        {/* Search Bar */}
-        <div className="border-b border-border p-6">
-          <div className="relative">
-            <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Search by user name, email or plan..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full rounded-lg border border-input bg-background px-4 py-2.5 pl-10 text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
-            />
-          </div>
-        </div>
+      <div className="relative max-w-md animate-fade-in-up stagger-1">
+        <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <input
+          type="text"
+          placeholder="Search by client, email or plan..."
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          className="h-10 w-full rounded-xl border border-input bg-background pl-10 pr-4 text-sm text-foreground placeholder:text-muted-foreground transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+        />
+      </div>
 
-        {/* Table */}
+      <div className="animate-fade-in-up stagger-2 rounded-2xl border border-border/80 bg-card p-6 elevation-1">
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-border text-left text-sm font-medium text-muted-foreground bg-muted/30">
-                <th className="py-3 px-6">User</th>
-                <th className="py-3 px-6 cursor-pointer hover:text-foreground" onClick={() => setSortField('plan')}>Plan</th>
-                <th className="py-3 px-6">Price</th>
-                <th className="py-3 px-6 cursor-pointer hover:text-foreground" onClick={() => setSortField('status')}>Status</th>
-                <th className="py-3 px-6">Next Billing</th>
-                <th className="py-3 px-6">Payment Method</th>
-                <th className="py-3 px-6">Stripe ID</th>
-                <th className="py-3 px-6 text-right">Actions</th>
+              <tr className="border-b border-border text-left">
+                <th className="pb-3 pr-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Client</th>
+                <th className="pb-3 pr-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Plan</th>
+                <th className="pb-3 pr-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Method</th>
+                <th className="pb-3 pr-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Status</th>
+                <th className="pb-3 pr-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Period end</th>
+                <th className="pb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Auto-renew</th>
               </tr>
             </thead>
             <tbody>
-              {filteredSubscriptions.map((subscription) => (
-                <tr
-                  key={subscription.id}
-                  className="border-b border-border hover:bg-muted/50 transition-colors"
-                >
-                  <td className="py-4 px-6">
-                    <div>
-                      <p className="font-medium text-foreground">{subscription.userName}</p>
-                      <p className="text-sm text-muted-foreground">{subscription.userEmail}</p>
-                    </div>
+              {filtered.map(subscription => (
+                <tr key={subscription.id} className="border-b border-border/50 transition-colors hover:bg-muted/50">
+                  <td className="py-3.5 pr-4">
+                    <Link href={`/dashboard/admin/users/${subscription.user.id}`} className="hover:underline">
+                      <p className="font-medium text-foreground">
+                        {subscription.user.firstName} {subscription.user.lastName}
+                      </p>
+                      <p className="text-xs text-muted-foreground">{subscription.user.email}</p>
+                    </Link>
                   </td>
-                  <td className="py-4 px-6">
-                    <span className="inline-flex rounded-full bg-indigo-100 dark:bg-indigo-900/30 px-3 py-1 text-xs font-medium text-indigo-700 dark:text-indigo-400">
-                      {subscription.plan}
+                  <td className="py-3.5 pr-4 font-medium">{subscription.plan}</td>
+                  <td className="py-3.5 pr-4">
+                    <span className="inline-flex items-center gap-1.5 text-foreground">
+                      {subscription.provider === 'coingate' ? (
+                        <>
+                          <Bitcoin className="h-[18px] w-[18px] text-warning" aria-hidden /> Crypto
+                        </>
+                      ) : (
+                        <>
+                          <CreditCard className="h-[18px] w-[18px] text-primary" aria-hidden /> Card
+                        </>
+                      )}
                     </span>
                   </td>
-                  <td className="py-4 px-6">
-                    <span className="font-semibold text-foreground">{subscription.price}</span>
+                  <td className="py-3.5 pr-4">
+                    {statusBadge(subscription.status)}
+                    {subscription.status === 'PAST_DUE' && subscription.gracePeriodEnd && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        grace until {new Date(subscription.gracePeriodEnd).toLocaleDateString()}
+                      </p>
+                    )}
                   </td>
-                  <td className="py-4 px-6">
-                    <StatusBadge
-                      status={subscription.status === 'active' ? 'active' : subscription.status === 'cancelled' ? 'suspended' : 'pending'}
-                      variant="subtle"
-                    />
-                  </td>
-                  <td className="py-4 px-6">
-                    <span className="text-sm text-muted-foreground">
-                      {subscription.nextBillingDate 
-                        ? new Date(subscription.nextBillingDate).toLocaleDateString('en-US', {
-                            month: 'short',
-                            day: 'numeric',
-                            year: 'numeric',
-                          })
-                        : 'N/A'
-                      }
-                    </span>
-                  </td>
-                  <td className="py-4 px-6">
-                    <span className="text-sm text-muted-foreground">{subscription.paymentMethod}</span>
-                  </td>
-                  <td className="py-4 px-6">
-                    <span className="text-xs font-mono text-muted-foreground">{subscription.stripeSubscriptionId}</span>
-                  </td>
-                  <td className="py-4 px-6 text-right">
-                    <button className="p-2 hover:bg-muted rounded-lg transition-colors">
-                      <MoreVertical className="h-4 w-4 text-muted-foreground" />
-                    </button>
+                  <td className="py-3.5 pr-4 tabular-nums">{new Date(subscription.currentPeriodEnd).toLocaleDateString()}</td>
+                  <td className="py-3.5">
+                    {subscription.provider === 'coingate'
+                      ? 'Manual'
+                      : subscription.cancelAtPeriodEnd
+                        ? 'Cancels at period end'
+                        : 'On'}
                   </td>
                 </tr>
               ))}
@@ -216,9 +147,15 @@ export default function AdminSubscriptionsPage() {
           </table>
         </div>
 
-        {filteredSubscriptions.length === 0 && (
-          <div className="text-center py-12">
-            <p className="text-muted-foreground">No subscriptions found</p>
+        {filtered.length === 0 && (
+          <div className="py-12 text-center">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+              <CreditCard className="h-6 w-6" />
+            </div>
+            <p className="font-semibold text-foreground">No subscriptions found</p>
+            <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
+              Try a different name, email or plan.
+            </p>
           </div>
         )}
       </div>

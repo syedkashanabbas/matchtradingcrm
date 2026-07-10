@@ -9,7 +9,58 @@ import {
   validateBrokerAccount,
   getBrokerStats,
   getSupportedBrokers,
+  replaceBrokerAccount,
+  setHedgeBroker,
 } from "./broker.service";
+
+/** POST /api/broker/:id/replace - broker credential replacement (§5.4) */
+export const replaceBroker = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user.userId;
+    const { id } = req.params;
+    const { brokerName, mt5AccountNumber, mt5Password, mt5Server, brokerPortalPassword } = req.body;
+
+    if (!brokerName || !mt5AccountNumber || !mt5Password || !mt5Server) {
+      return res.status(400).json({
+        success: false,
+        error: { code: "VALIDATION_ERROR", message: "brokerName, mt5AccountNumber, mt5Password and mt5Server are required" },
+      });
+    }
+
+    const broker = await replaceBrokerAccount(userId, id as string, {
+      brokerName,
+      mt5AccountNumber,
+      mt5Password,
+      mt5Server,
+      brokerPortalPassword,
+    });
+    res.status(201).json({ success: true, data: broker });
+  } catch (error: any) {
+    console.error("Replace broker error:", error);
+    res.status(400).json({ success: false, error: { code: "BROKER_REPLACE_FAILED", message: error.message } });
+  }
+};
+
+/** POST /api/broker/hedge-broker - designate the hedge broker (§5.4) */
+export const chooseHedgeBroker = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user.userId;
+    const { brokerAccountId } = req.body;
+
+    if (!brokerAccountId) {
+      return res.status(400).json({
+        success: false,
+        error: { code: "VALIDATION_ERROR", message: "brokerAccountId is required" },
+      });
+    }
+
+    const command = await setHedgeBroker(userId, brokerAccountId, userId);
+    res.json({ success: true, message: "Hedge broker change queued", data: command });
+  } catch (error: any) {
+    console.error("Set hedge broker error:", error);
+    res.status(400).json({ success: false, error: { code: "HEDGE_BROKER_FAILED", message: error.message } });
+  }
+};
 
 export const createBroker = async (req: AuthRequest, res: Response) => {
   try {

@@ -1,434 +1,632 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Copy, Globe, Users, TrendingUp, Award, Activity, ChevronDown, ChevronRight, Medal, Star } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import Link from 'next/link';
 import { QRCodeSVG } from 'qrcode.react';
-import { apiClient } from '../../../../lib/api';
-import { ReferralLinkData, NetworkTreeData } from '../../../../src/types/network.types';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { LoadingSkeleton } from '@/components/shared/LoadingSkeleton';
+import {
+  Copy,
+  Check,
+  QrCode,
+  Users,
+  UserCheck,
+  Wallet,
+  Trophy,
+  Sparkles,
+  ArrowRight,
+  Send,
+  Mail,
+  MessageCircle,
+  Share2,
+  Target,
+  Activity,
+  Network,
+  List,
+} from 'lucide-react';
+import { apiClient } from '@/lib/api';
+import { NetworkTree, type TreeNode } from '@/components/network/NetworkTree';
+import { QualificationCard, type QualificationData } from '@/components/network/QualificationCard';
+import { ChallengesCard, type ChallengeData, type PastChallenge } from '@/components/network/ChallengesCard';
+import { TravelPromosCard, type TravelPromoData } from '@/components/network/TravelPromosCard';
 
-export default function NetworkPage() {
-  const [activeTab, setActiveTab] = useState('referral');
-  const [copied, setCopied] = useState(false);
-  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set(['root']));
-  const [referralData, setReferralData] = useState<ReferralLinkData | null>(null);
-  const [networkTree, setNetworkTree] = useState<NetworkTreeData | null>(null);
-  const [loading, setLoading] = useState(true);
+// ------------------------------------------------------------------
+// Data shapes
+// ------------------------------------------------------------------
+interface DownlineClient {
+  id: string;
+  name: string;
+  level: number;
+  status: 'active' | 'onboarding' | 'suspended' | 'expired';
+  joinedAt: string;
+}
+
+interface Balances {
+  accruedUnpaid: number;
+  totalPaid: number;
+  allTime: number;
+  monthly: Array<{ month: string; total: number }>;
+}
+
+interface ActivityEvent {
+  id: string;
+  eventType: string;
+  message: string;
+  createdAt: string;
+}
+
+// Milestone ladder - the growth game
+const MILESTONES = [
+  { size: 1, label: 'First referral', icon: '🥉' },
+  { size: 3, label: 'Inner circle', icon: '🥈' },
+  { size: 5, label: 'High five', icon: '🥇' },
+  { size: 10, label: 'Networker', icon: '🏆' },
+  { size: 25, label: 'Rainmaker', icon: '💎' },
+  { size: 50, label: 'Legend', icon: '👑' },
+];
+
+const LIFECYCLE_STYLES: Record<string, string> = {
+  active: 'bg-success/15 text-success border-success/25',
+  onboarding: 'bg-primary/10 text-primary border-primary/20',
+  suspended: 'bg-warning/15 text-warning border-warning/25',
+  expired: 'bg-destructive/10 text-destructive border-destructive/20',
+};
+
+// ------------------------------------------------------------------
+// Count-up hook (respects reduced motion)
+// ------------------------------------------------------------------
+function useCountUp(target: number, durationMs = 900) {
+  const [value, setValue] = useState(0);
+  const started = useRef(false);
 
   useEffect(() => {
-    fetchReferralLink();
-    fetchNetworkTree();
+    if (typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setValue(target);
+      return;
+    }
+    if (started.current && value === target) return;
+    started.current = true;
+    let frame: number;
+    const start = performance.now();
+    const from = 0;
+    const tick = (now: number) => {
+      const progress = Math.min((now - start) / durationMs, 1);
+      const eased = 1 - Math.pow(1 - progress, 3); // ease-out cubic
+      setValue(from + (target - from) * eased);
+      if (progress < 1) frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [target, durationMs]);
+
+  return value;
+}
+
+function KpiTile({
+  icon,
+  label,
+  value,
+  suffix,
+  decimals = 0,
+  hint,
+  tone,
+  stagger,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: number;
+  suffix?: string;
+  decimals?: number;
+  hint?: string;
+  tone: 'indigo' | 'emerald' | 'violet' | 'amber';
+  stagger: string;
+}) {
+  const animated = useCountUp(value);
+  const tones = {
+    indigo: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400',
+    emerald: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+    violet: 'bg-violet-500/10 text-violet-600 dark:text-violet-400',
+    amber: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
+  };
+  return (
+    <div className={`rounded-2xl border border-border bg-card p-5 shadow-soft hover-lift animate-fade-in-up ${stagger}`}>
+      <div className={`mb-3 flex h-10 w-10 items-center justify-center rounded-xl ${tones[tone]}`}>{icon}</div>
+      <p className="text-sm font-medium text-muted-foreground">{label}</p>
+      <p className="mt-0.5 text-3xl font-bold tracking-tight tabular-nums text-foreground">
+        {animated.toFixed(decimals)}
+        {suffix && <span className="ml-1 text-base font-semibold text-muted-foreground">{suffix}</span>}
+      </p>
+      {hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------
+// Page
+// ------------------------------------------------------------------
+export default function NetworkerHubPage() {
+  const [referralLink, setReferralLink] = useState('');
+  const [referralCode, setReferralCode] = useState('');
+  const [downline, setDownline] = useState<DownlineClient[]>([]);
+  const [balances, setBalances] = useState<Balances | null>(null);
+  const [activity, setActivity] = useState<ActivityEvent[]>([]);
+  const [tree, setTree] = useState<TreeNode | null>(null);
+  const [qualification, setQualification] = useState<QualificationData | null>(null);
+  const [challenges, setChallenges] = useState<ChallengeData[]>([]);
+  const [pastChallenges, setPastChallenges] = useState<PastChallenge[]>([]);
+  const [promos, setPromos] = useState<TravelPromoData[]>([]);
+  const [peopleView, setPeopleView] = useState<'tree' | 'list'>('tree');
+  const [isLoading, setIsLoading] = useState(true);
+  const [copied, setCopied] = useState(false);
+  const [showQr, setShowQr] = useState(false);
+
+  useEffect(() => {
+    const load = async () => {
+      const [linkRes, downlineRes, commissionsRes, activityRes, treeRes, qualificationRes, challengesRes, promosRes] =
+        await Promise.allSettled([
+          apiClient.getMyReferralLink(),
+          apiClient.getDownlineClients(),
+          apiClient.getAgentCommissions(),
+          apiClient.getNetworkActivityFeed(),
+          apiClient.getMyNetworkTree(),
+          apiClient.getQualification(),
+          apiClient.getChallenges(),
+          apiClient.getTravelPromos(),
+        ]);
+
+      if (linkRes.status === 'fulfilled') {
+        const data = (linkRes.value as any).data ?? linkRes.value;
+        setReferralLink(data.referralLink ?? '');
+        setReferralCode(data.referralCode ?? '');
+      }
+      if (downlineRes.status === 'fulfilled') {
+        setDownline(((downlineRes.value as any).data ?? []) as DownlineClient[]);
+      }
+      if (commissionsRes.status === 'fulfilled') {
+        setBalances(((commissionsRes.value as any).data?.balances ?? null) as Balances | null);
+      }
+      if (activityRes.status === 'fulfilled') {
+        const data = (activityRes.value as any).data ?? activityRes.value;
+        setActivity(Array.isArray(data) ? data.slice(0, 5) : []);
+      }
+      if (treeRes.status === 'fulfilled') {
+        const data = (treeRes.value as any).data ?? treeRes.value;
+        setTree((data && data.id ? data : null) as TreeNode | null);
+      }
+      if (qualificationRes.status === 'fulfilled') {
+        setQualification(((qualificationRes.value as any).data ?? null) as QualificationData | null);
+      }
+      if (challengesRes.status === 'fulfilled') {
+        const data = (challengesRes.value as any).data ?? {};
+        setChallenges((data.active ?? []) as ChallengeData[]);
+        setPastChallenges((data.past ?? []) as PastChallenge[]);
+      }
+      if (promosRes.status === 'fulfilled') {
+        setPromos(((promosRes.value as any).data ?? []) as TravelPromoData[]);
+      }
+      setIsLoading(false);
+    };
+    load();
   }, []);
 
-  const fetchReferralLink = async () => {
-    try {
-      setLoading(true);
-      const response = await apiClient.getMyReferralLink();
-      // Handle both direct response and wrapped response
-      const data = response.data || response;
-      setReferralData(data as ReferralLinkData);
-    } catch (error) {
-      console.error('Failed to fetch referral link:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchNetworkTree = async () => {
-    try {
-      const response = await apiClient.getMyNetworkTree();
-      // Handle both direct response and wrapped response
-      const data = response.data || response;
-      setNetworkTree(data as NetworkTreeData);
-    } catch (error) {
-      console.error('Failed to fetch network tree:', error);
-    }
-  };
-
-  const referralLink = referralData?.referralLink || '';
-
-  const handleCopyLink = () => {
+  const copyLink = useCallback(() => {
     navigator.clipboard.writeText(referralLink);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  };
+  }, [referralLink]);
 
-  const toggleNode = (nodeId: string) => {
-    const newExpanded = new Set(expandedNodes);
-    if (newExpanded.has(nodeId)) {
-      newExpanded.delete(nodeId);
-    } else {
-      newExpanded.add(nodeId);
-    }
-    setExpandedNodes(newExpanded);
-  };
+  // ---------------- derived game state ----------------
+  const networkSize = downline.length;
+  const activeClients = downline.filter(client => client.status === 'active').length;
+  const onboardingClients = downline.filter(client => client.status === 'onboarding');
 
-  // Mock data for tables
-  const directReferrals = [
-    { name: 'Marco S.', email: 'marco@email.com', dateJoined: 'Jan 15, 2026', status: 'Active' },
-    { name: 'Luigi V.', email: 'luigi@email.com', dateJoined: 'Feb 3, 2026', status: 'Active' },
-    { name: 'Ahmed K.', email: 'ahmed@email.com', dateJoined: 'Feb 20, 2026', status: 'Pending' }
-  ];
+  const nextMilestone = MILESTONES.find(m => networkSize < m.size);
+  const currentMilestone = [...MILESTONES].reverse().find(m => networkSize >= m.size);
+  const prevSize = currentMilestone?.size ?? 0;
+  const progressPct = nextMilestone
+    ? Math.round(((networkSize - prevSize) / (nextMilestone.size - prevSize)) * 100)
+    : 100;
 
-  const topRecruiters = [
-    { name: 'Marco S.', referrals: 23, rank: 1 },
-    { name: 'Luigi V.', referrals: 18, rank: 2 },
-    { name: 'Sara M.', referrals: 14, rank: 3 },
-    { name: 'Ahmed K.', referrals: 11, rank: 4 },
-    { name: 'Paolo R.', referrals: 9, rank: 5 }
-  ];
+  // ---------------- next best action ----------------
+  const shareText = encodeURIComponent(
+    `Join me on EIDOS - automated trading setup for prop traders. Sign up with my link: ${referralLink}`
+  );
+  const nextAction =
+    networkSize === 0
+      ? {
+          title: 'Invite your first trader',
+          body: 'Share your link once and your network starts here. You earn a commission on every payment they make - first sale and every renewal.',
+          cta: 'Copy your link',
+          onClick: copyLink,
+        }
+      : onboardingClients.length > 0
+        ? {
+            title: `${onboardingClients[0].name} hasn't finished setup`,
+            body: `${onboardingClients.length} member${onboardingClients.length === 1 ? ' is' : 's are'} still onboarding. A friendly nudge gets them active - and turns into recurring commissions for you.`,
+            cta: 'Copy link to resend',
+            onClick: copyLink,
+          }
+        : nextMilestone
+          ? {
+              title: `${nextMilestone.size - networkSize} more to "${nextMilestone.label}"`,
+              body: 'Your whole network is active - great work. Keep sharing to reach the next milestone and grow your monthly income.',
+              cta: 'Copy your link',
+              onClick: copyLink,
+            }
+          : {
+              title: 'You are a Legend',
+              body: 'Every milestone unlocked. Your network keeps paying you every month - keep it warm.',
+              cta: 'Copy your link',
+              onClick: copyLink,
+            };
 
-  const fastestGrowing = [
-    { name: 'Marco S.', growth: 41, rank: 1 },
-    { name: 'Giulia F.', growth: 29, rank: 2 },
-    { name: 'Luca D.', growth: 22, rank: 3 },
-    { name: 'Sara M.', growth: 17, rank: 4 },
-    { name: 'Ahmed K.', growth: 12, rank: 5 }
-  ];
-
-  const recentActivity = [
-    { icon: '🟢', text: 'Sara joined your network (invited by Marco)', time: '2 hours ago' },
-    { icon: '🟢', text: 'Giulia completed onboarding ✅', time: '1 day ago' },
-    { icon: '🔵', text: 'Paolo\'s prop firm is PENDING admin approval', time: '3 days ago' },
-    { icon: '🟡', text: 'Ahmed needs to complete VPS setup', time: '5 days ago' },
-    { icon: '🟢', text: '🎉 Milestone! Your network reached 25 members', time: '1 week ago' }
-  ];
-
-  const TreeNode = ({ node, level = 0 }: { node: any; level?: number }) => {
-    const isExpanded = expandedNodes.has(node.id);
-    const hasChildren = node.children && node.children.length > 0;
-    
-    const getAvatarColor = (nodeLevel: number) => {
-      switch (nodeLevel) {
-        case 0: return 'bg-purple-500';
-        case 1: return 'bg-cyan-500';
-        case 2: return 'bg-green-500';
-        case 3: return 'bg-amber-500';
-        default: return 'bg-gray-500';
-      }
-    };
-
-    const getStatusColor = (status: string) => {
-      return status === 'Active' ? 'bg-green-500' : 'bg-yellow-500';
-    };
-
-    const getBorderColor = (nodeLevel: number) => {
-      switch (nodeLevel) {
-        case 0: return 'border-purple-500 shadow-purple-200';
-        default: return 'border-gray-300';
-      }
-    };
-
+  if (isLoading) {
     return (
-      <div className="relative">
-        <div className="flex items-center">
-          {level > 0 && (
-            <div className="w-8 h-0.5 bg-gray-300 mr-2"></div>
-          )}
-          
-          <div className={`relative border-2 rounded-lg p-3 cursor-pointer transition-all hover:shadow-md ${getBorderColor(level)} ${
-            level === 0 ? 'bg-purple-50 shadow-lg' : 'bg-white'
-          }`}>
-            {hasChildren && (
-              <button
-                onClick={() => toggleNode(node.id)}
-                className="absolute -left-2 -top-2 bg-white border border-gray-300 rounded-full p-1 hover:bg-gray-50"
-              >
-                {isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-              </button>
-            )}
-            
-            <div className="flex items-center space-x-3">
-              <div className={`w-10 h-10 rounded-full ${getAvatarColor(level)} flex items-center justify-center text-white font-semibold`}>
-                {node.name ? node.name.charAt(0) : '?'}
-              </div>
-              <div>
-                <div className="font-medium">{node.name || 'Unknown'}</div>
-                <div className="text-xs text-gray-500">Level {level}</div>
-              </div>
-              <div className={`w-2 h-2 rounded-full ${getStatusColor(node.status || 'Unknown')}`}></div>
-            </div>
-          </div>
-        </div>
-        
-        {hasChildren && isExpanded && (
-          <div className="ml-8 mt-2 relative">
-            {node.children.map((child: any, index: number) => (
-              <div key={child.id} className="relative">
-                {index < node.children.length - 1 && (
-                  <div className="absolute left-4 top-0 w-0.5 h-full bg-gray-300"></div>
-                )}
-                <div className="py-2">
-                  <TreeNode node={child} level={level + 1} />
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+      <div className="space-y-6">
+        <LoadingSkeleton variant="card" />
+        <LoadingSkeleton variant="card" count={4} />
       </div>
     );
-  };
-
-  const tabs = [
-    { id: 'referral', label: 'My Referral Link', icon: Globe },
-    { id: 'network', label: 'My Network', icon: Users },
-    // { id: 'referrals', label: 'Direct Referrals', icon: TrendingUp },
-    // { id: 'stats', label: 'Network Stats', icon: Award }
-  ];
+  }
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-foreground">Network</h1>
-        <p className="text-muted-foreground mt-2">Manage your referral network and track growth</p>
-      </div>
+      {/* ---------------- Hero: the one action that matters ---------------- */}
+      <div className="relative overflow-hidden rounded-3xl bg-brand-gradient p-6 sm:p-8 text-white shadow-lg animate-fade-in-up">
+        <div aria-hidden className="pointer-events-none absolute -right-16 -top-16 h-64 w-64 rounded-full bg-white/10 blur-2xl" />
+        <div aria-hidden className="pointer-events-none absolute -bottom-24 -left-10 h-72 w-72 rounded-full bg-black/10 blur-3xl" />
 
-      {/* Tabs */}
-      <div className="border-b border-border">
-        <nav className="flex space-x-8">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors ${
-                activeTab === tab.id
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <tab.icon className="inline-block w-4 h-4 mr-2" />
-              {tab.label}
-            </button>
-          ))}
-        </nav>
-      </div>
-
-      {/* Tab Content */}
-      <div className="mt-6">
-        {activeTab === 'referral' && (
-          <div className="space-y-6">
-            <div className="bg-card rounded-lg border border-border p-6">
-              <h2 className="text-xl font-semibold mb-4">Your Referral Link</h2>
-              <div className="bg-muted rounded-lg p-4 mb-4">
-                <div className="flex items-center justify-between">
-                  {loading ? (
-                    <div className="text-sm text-muted-foreground">Loading referral link...</div>
-                  ) : (
-                    <div className="flex-1">
-                      <code className="text-sm font-mono text-foreground break-all">{referralLink}</code>
-                      {referralData && (
-                        <div className="text-xs text-muted-foreground mt-1">
-                          Referral Code: {referralData.referralCode} | 
-                          Registrations: {referralData.registrations}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  <button
-                    onClick={handleCopyLink}
-                    disabled={loading || !referralLink}
-                    className="ml-4 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <Copy className="w-4 h-4" />
-                    <span>{copied ? 'Copied!' : 'Copy'}</span>
-                  </button>
-                </div>
-              </div>
-              
-              <div className="flex justify-center mb-6">
-                <div className="bg-white p-4 rounded-lg border border-border">
-                  {loading ? (
-                    <div className="w-[200px] h-[200px] bg-muted animate-pulse rounded" />
-                  ) : (
-                    <QRCodeSVG value={referralLink} size={200} />
-                  )}
-                </div>
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-muted rounded-lg p-4 text-center">
-                  <div className="text-2xl font-bold text-primary">{referralData?.linkClicks || 0}</div>
-                  <div className="text-sm text-muted-foreground">Link Clicks</div>
-                </div>
-                <div className="bg-muted rounded-lg p-4 text-center">
-                  <div className="text-2xl font-bold text-primary">{referralData?.registrations || 0}</div>
-                  <div className="text-sm text-muted-foreground">Registrations</div>
-                </div>
-              </div>
+        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+          <div className="max-w-xl">
+            <div className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold backdrop-blur">
+              <Sparkles className="h-3.5 w-3.5" /> Earn on every payment, forever
             </div>
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
+              Share your link. <span className="opacity-90">Get paid monthly.</span>
+            </h1>
+            <p className="mt-2 text-sm sm:text-base text-white/85">
+              Every trader who joins with your link earns you a commission on their first payment{' '}
+              <strong>and every renewal</strong>.
+            </p>
           </div>
-        )}
 
-        {activeTab === 'network' && (
-          <div className="bg-card rounded-lg border border-border p-6">
-            <h2 className="text-xl font-semibold mb-4">My Network Tree</h2>
-            <div className="overflow-x-auto">
-              <div className="min-w-max p-4">
-                {networkTree ? (
-                  <TreeNode node={networkTree} />
-                ) : loading ? (
-                  <div className="text-center py-8">
-                    <div className="text-muted-foreground">Loading network tree...</div>
-                  </div>
+          {/* Share block */}
+          <div className="w-full max-w-md">
+            <div className="flex items-center gap-2 rounded-2xl bg-white/15 p-2 backdrop-blur">
+              <p className="min-w-0 flex-1 truncate px-3 font-mono text-sm">{referralLink || '…'}</p>
+              <Button
+                onClick={copyLink}
+                size="sm"
+                className="shrink-0 bg-white text-primary hover:bg-white/90 font-semibold shadow"
+              >
+                {copied ? <Check className="h-4 w-4 mr-1" /> : <Copy className="h-4 w-4 mr-1" />}
+                {copied ? 'Copied!' : 'Copy'}
+              </Button>
+            </div>
+
+            <div className="mt-3 flex items-center gap-2">
+              <a
+                href={`https://wa.me/?text=${shareText}`}
+                target="_blank"
+                rel="noreferrer"
+                aria-label="Share on WhatsApp"
+                className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/15 hover:bg-white/25 transition-colors backdrop-blur"
+              >
+                <MessageCircle className="h-5 w-5" />
+              </a>
+              <a
+                href={`https://t.me/share/url?url=${encodeURIComponent(referralLink)}&text=${shareText}`}
+                target="_blank"
+                rel="noreferrer"
+                aria-label="Share on Telegram"
+                className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/15 hover:bg-white/25 transition-colors backdrop-blur"
+              >
+                <Send className="h-5 w-5" />
+              </a>
+              <a
+                href={`mailto:?subject=${encodeURIComponent('Join me on EIDOS')}&body=${shareText}`}
+                aria-label="Share via email"
+                className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/15 hover:bg-white/25 transition-colors backdrop-blur"
+              >
+                <Mail className="h-5 w-5" />
+              </a>
+              <button
+                onClick={() => setShowQr(!showQr)}
+                aria-label="Show QR code"
+                className={`flex h-10 w-10 items-center justify-center rounded-xl transition-colors backdrop-blur ${
+                  showQr ? 'bg-white text-primary' : 'bg-white/15 hover:bg-white/25'
+                }`}
+              >
+                <QrCode className="h-5 w-5" />
+              </button>
+              <span className="ml-auto rounded-lg bg-white/15 px-2.5 py-1 font-mono text-xs backdrop-blur">
+                {referralCode}
+              </span>
+            </div>
+
+            {showQr && (
+              <div className="mt-3 flex justify-center rounded-2xl bg-white p-4 animate-fade-in-up">
+                <QRCodeSVG value={referralLink} size={160} />
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ---------------- KPI row: your network in 5 seconds ---------------- */}
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+        <KpiTile
+          icon={<Users className="h-5 w-5" />}
+          label="Network members"
+          value={networkSize}
+          hint={networkSize === 0 ? 'Share your link to start' : 'People who joined with your link'}
+          tone="indigo"
+          stagger="stagger-1"
+        />
+        <KpiTile
+          icon={<UserCheck className="h-5 w-5" />}
+          label="Active clients"
+          value={activeClients}
+          hint="Paying you every month"
+          tone="emerald"
+          stagger="stagger-2"
+        />
+        <KpiTile
+          icon={<Wallet className="h-5 w-5" />}
+          label="Pending payout"
+          value={balances?.accruedUnpaid ?? 0}
+          suffix="EUR"
+          decimals={2}
+          hint="Awaiting next payout run"
+          tone="violet"
+          stagger="stagger-3"
+        />
+        <KpiTile
+          icon={<Trophy className="h-5 w-5" />}
+          label="Earned all-time"
+          value={balances?.allTime ?? 0}
+          suffix="EUR"
+          decimals={2}
+          hint="Since you joined"
+          tone="amber"
+          stagger="stagger-4"
+        />
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        {/* ---------------- Milestones & achievements ---------------- */}
+        <Card className="lg:col-span-2 animate-fade-in-up stagger-2">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Target className="h-5 w-5 text-primary" />
+                <CardTitle className="text-lg">Your journey</CardTitle>
+              </div>
+              {currentMilestone && (
+                <Badge className="bg-primary/10 text-primary border-primary/20">
+                  {currentMilestone.icon} {currentMilestone.label}
+                </Badge>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            {/* Progress to next milestone */}
+            <div>
+              <div className="mb-2 flex items-baseline justify-between text-sm">
+                {nextMilestone ? (
+                  <>
+                    <span className="font-medium text-foreground">
+                      Next: {nextMilestone.icon} {nextMilestone.label}
+                    </span>
+                    <span className="text-muted-foreground tabular-nums">
+                      {networkSize} / {nextMilestone.size} members
+                    </span>
+                  </>
                 ) : (
-                  <div className="text-center py-8">
-                    <div className="text-muted-foreground">No network data available</div>
-                  </div>
+                  <span className="font-medium text-foreground">All milestones unlocked 🎉</span>
                 )}
               </div>
+              <div className="h-3 overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-full rounded-full bg-brand-gradient transition-all duration-700 ease-out"
+                  style={{ width: `${Math.max(progressPct, networkSize > 0 ? 8 : 0)}%` }}
+                  role="progressbar"
+                  aria-valuenow={progressPct}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                />
+              </div>
+              {nextMilestone && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {nextMilestone.size - networkSize} more{' '}
+                  {nextMilestone.size - networkSize === 1 ? 'referral' : 'referrals'} to unlock
+                </p>
+              )}
+            </div>
+
+            {/* Achievement chips */}
+            <div className="flex flex-wrap gap-2">
+              {MILESTONES.map(milestone => {
+                const unlocked = networkSize >= milestone.size;
+                return (
+                  <div
+                    key={milestone.size}
+                    title={`${milestone.label} - ${milestone.size} member${milestone.size === 1 ? '' : 's'}`}
+                    className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                      unlocked
+                        ? 'border-primary/25 bg-primary/10 text-primary'
+                        : 'border-border bg-muted/50 text-muted-foreground opacity-60'
+                    }`}
+                  >
+                    <span aria-hidden>{milestone.icon}</span>
+                    {milestone.label}
+                    {unlocked && <Check className="h-3 w-3" />}
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* ---------------- Next best action ---------------- */}
+        <Card className="border-primary/25 bg-primary/[0.03] animate-fade-in-up stagger-3">
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-primary" />
+              <CardTitle className="text-lg">Do this next</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <p className="font-semibold text-foreground">{nextAction.title}</p>
+              <p className="mt-1 text-sm text-muted-foreground leading-relaxed">{nextAction.body}</p>
+            </div>
+            <Button onClick={nextAction.onClick} className="w-full">
+              <Share2 className="h-4 w-4 mr-2" />
+              {copied ? 'Link copied!' : nextAction.cta}
+            </Button>
+            <Link
+              href="/dashboard/client/commissions"
+              className="flex items-center justify-center gap-1 text-sm font-medium text-primary hover:underline"
+            >
+              View commission history <ArrowRight className="h-4 w-4" />
+            </Link>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ---------------- Exonoma engine: qualification, challenges, promos ---------------- */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <QualificationCard data={qualification} />
+        <ChallengesCard challenges={challenges} past={pastChallenges} />
+        <TravelPromosCard promos={promos} />
+      </div>
+
+      {/* ---------------- Your network tree (la ramificazione) ---------------- */}
+      <Card className="animate-fade-in-up stagger-3">
+        <CardHeader className="pb-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-exo-verdigris-soft text-exo-verdigris">
+                <Network className="h-[18px] w-[18px]" />
+              </div>
+              <CardTitle className="font-display text-lg">Your network</CardTitle>
+              <span className="text-sm text-muted-foreground tabular-nums">({networkSize})</span>
+            </div>
+            <div className="flex items-center gap-1 rounded-xl bg-muted p-1">
+              <button
+                onClick={() => setPeopleView('tree')}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  peopleView === 'tree'
+                    ? 'bg-card text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+                aria-pressed={peopleView === 'tree'}
+              >
+                <Network className="h-3.5 w-3.5" /> Tree
+              </button>
+              <button
+                onClick={() => setPeopleView('list')}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  peopleView === 'list'
+                    ? 'bg-card text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+                aria-pressed={peopleView === 'list'}
+              >
+                <List className="h-3.5 w-3.5" /> List
+              </button>
             </div>
           </div>
-        )}
-
-        {activeTab === 'referrals' && (
-          <div className="bg-card rounded-lg border border-border">
-            <div className="p-6">
-              <h2 className="text-xl font-semibold mb-4">Direct Referrals</h2>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-border">
-                    <th className="text-left py-3 px-6 font-medium text-muted-foreground">Name</th>
-                    <th className="text-left py-3 px-6 font-medium text-muted-foreground">Email</th>
-                    <th className="text-left py-3 px-6 font-medium text-muted-foreground">Date Joined</th>
-                    <th className="text-left py-3 px-6 font-medium text-muted-foreground">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {directReferrals.map((referral, index) => (
-                    <tr key={index} className="border-b border-border">
-                      <td className="py-3 px-6">{referral.name}</td>
-                      <td className="py-3 px-6">{referral.email}</td>
-                      <td className="py-3 px-6">{referral.dateJoined}</td>
-                      <td className="py-3 px-6">
-                        <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                          referral.status === 'Active' 
-                            ? 'bg-green-100 text-green-800' 
-                            : referral.status === 'Pending'
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : 'bg-gray-100 text-gray-800'
-                        }`}>
-                          {referral.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'stats' && (
-          <div className="space-y-6">
-            {/* Primary Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-lg p-6 shadow-lg">
-                <div className="text-3xl font-bold">12</div>
-                <div className="text-sm opacity-90">Direct Referrals</div>
-              </div>
-              <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-lg p-6 shadow-lg">
-                <div className="text-3xl font-bold">47</div>
-                <div className="text-sm opacity-90">Total Network</div>
-              </div>
-              <div className="bg-gradient-to-br from-cyan-500 to-cyan-600 text-white rounded-lg p-6 shadow-lg">
-                <div className="text-3xl font-bold">5</div>
-                <div className="text-sm opacity-90">Network Depth</div>
-              </div>
-              <div className="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-lg p-6 shadow-lg">
-                <div className="text-3xl font-bold">38</div>
-                <div className="text-sm opacity-90">Active Members</div>
-              </div>
-            </div>
-
-            {/* Secondary Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-card rounded-lg border border-border p-4">
-                <div className="text-2xl font-bold text-primary">+8</div>
-                <div className="text-sm text-muted-foreground">New This Month</div>
-              </div>
-              <div className="bg-card rounded-lg border border-border p-4">
-                <div className="text-2xl font-bold text-primary">+3</div>
-                <div className="text-sm text-muted-foreground">New This Week</div>
-              </div>
-              <div className="bg-card rounded-lg border border-border p-4">
-                <div className="text-2xl font-bold text-primary">5</div>
-                <div className="text-sm text-muted-foreground">Pending Activation</div>
-              </div>
-              <div className="bg-card rounded-lg border border-border p-4">
-                <div className="text-2xl font-bold text-primary">+15%</div>
-                <div className="text-sm text-muted-foreground">Growth Rate</div>
-              </div>
-            </div>
-
-            {/* Leaderboards */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="bg-card rounded-lg border border-border p-6">
-                <h3 className="text-lg font-semibold mb-4 flex items-center">
-                  🏆 Top Recruiters This Month
-                </h3>
-                <div className="space-y-3">
-                  {topRecruiters.map((recruiter) => (
-                    <div key={recruiter.name} className="flex items-center justify-between">
-                      <div className="flex items-center space-x-3">
-                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-muted font-semibold text-sm">
-                          {recruiter.rank === 1 && '🥇'}
-                          {recruiter.rank === 2 && '🥈'}
-                          {recruiter.rank === 3 && '🥉'}
-                          {recruiter.rank > 3 && recruiter.rank}
-                        </div>
-                        <span>{recruiter.name}</span>
-                      </div>
-                      <span className="text-muted-foreground">{recruiter.referrals} referrals</span>
-                    </div>
-                  ))}
+          {networkSize > 0 && peopleView === 'tree' && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Every branch below you. You earn <span className="font-semibold text-exo-verdigris">20% · 18% · 12%</span>{' '}
+              on levels 1-3. Tap a person to open their branch.
+            </p>
+          )}
+        </CardHeader>
+        <CardContent>
+          {peopleView === 'tree' ? (
+            downline.length > 0 || (tree && tree.children.length > 0) ? (
+              <NetworkTree tree={tree} />
+            ) : (
+              <div className="py-10 text-center">
+                <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-exo-verdigris-soft">
+                  <Users className="h-7 w-7 text-exo-verdigris" />
                 </div>
+                <p className="font-medium text-foreground">Nobody here yet - be the spark</p>
+                <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
+                  Your future network is one share away. Copy your link and send it to a trader you know.
+                </p>
+                <Button onClick={copyLink} className="mt-4">
+                  <Copy className="h-4 w-4 mr-2" />
+                  {copied ? 'Copied!' : 'Copy your link'}
+                </Button>
               </div>
-
-              <div className="bg-card rounded-lg border border-border p-6">
-                <h3 className="text-lg font-semibold mb-4 flex items-center">
-                  🚀 Fastest Growing Networks
-                </h3>
-                <div className="space-y-3">
-                  {fastestGrowing.map((network) => (
-                    <div key={network.name} className="flex items-center justify-between">
-                      <div className="flex items-center space-x-3">
-                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-muted font-semibold text-sm">
-                          {network.rank === 1 && '🥇'}
-                          {network.rank === 2 && '🥈'}
-                          {network.rank === 3 && '🥉'}
-                          {network.rank > 3 && network.rank}
-                        </div>
-                        <span>{network.name}</span>
-                      </div>
-                      <span className="text-muted-foreground">+{network.growth} members</span>
+            )
+          ) : downline.length > 0 ? (
+            <div className="divide-y divide-border/60">
+              {downline.map(client => (
+                <div key={client.id} className="flex items-center justify-between gap-3 py-3">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-gradient text-xs font-bold text-white">
+                      {client.name.charAt(0)}
                     </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Activity Feed */}
-            <div className="bg-card rounded-lg border border-border p-6">
-              <h3 className="text-lg font-semibold mb-4 flex items-center">
-                ⚡ Recent Network Activity
-              </h3>
-              <div className="space-y-3">
-                {recentActivity.map((activity, index) => (
-                  <div key={index} className="flex items-start space-x-3 pb-3 border-b border-border last:border-0">
-                    <span className="text-lg">{activity.icon}</span>
-                    <div className="flex-1">
-                      <p className="text-sm">{activity.text}</p>
-                      <p className="text-xs text-muted-foreground mt-1">{activity.time}</p>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-foreground">{client.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Level {client.level} · joined {new Date(client.joinedAt).toLocaleDateString()}
+                      </p>
                     </div>
                   </div>
-                ))}
-              </div>
+                  <Badge variant="outline" className={LIFECYCLE_STYLES[client.status] ?? ''}>
+                    {client.status}
+                  </Badge>
+                </div>
+              ))}
             </div>
-          </div>
-        )}
-      </div>
+          ) : (
+            <div className="py-10 text-center">
+              <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10">
+                <Users className="h-7 w-7 text-primary" />
+              </div>
+              <p className="font-medium text-foreground">Nobody here yet - be the spark</p>
+              <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
+                Your future network is one share away. Copy your link and send it to a trader you know.
+              </p>
+              <Button onClick={copyLink} className="mt-4">
+                <Copy className="h-4 w-4 mr-2" />
+                {copied ? 'Copied!' : 'Copy your link'}
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ---------------- Recent activity ---------------- */}
+      {activity.length > 0 && (
+        <Card className="animate-fade-in-up stagger-4">
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <Activity className="h-5 w-5 text-primary" />
+              <CardTitle className="text-lg">Recent activity</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-1">
+            {activity.map(event => (
+              <div key={event.id} className="flex items-center justify-between gap-3 rounded-lg px-2 py-2.5 hover:bg-muted/60 transition-colors">
+                <p className="text-sm text-foreground">{event.message}</p>
+                <span className="shrink-0 text-xs text-muted-foreground">
+                  {new Date(event.createdAt).toLocaleDateString()}
+                </span>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

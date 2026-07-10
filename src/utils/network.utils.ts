@@ -44,6 +44,36 @@ export async function generateReferralCode(prisma: PrismaClient, userId?: string
   return code!;
 }
 
+/**
+ * Anti-cycle validation (spec v1.1 §7.2 / task 4.5): a user can never become
+ * the sponsor of one of their own ancestors, and never sponsor themselves.
+ * Walks up from the proposed sponsor; if it reaches `userId` there is a cycle.
+ * Throws on violation - call before creating/changing any sponsorship link.
+ */
+export async function assertNoSponsorCycle(
+  prisma: PrismaClient,
+  userId: string,
+  newSponsorId: string
+): Promise<void> {
+  if (userId === newSponsorId) {
+    throw new Error('A user cannot be their own sponsor');
+  }
+  const visited = new Set<string>();
+  let currentId: string | null = newSponsorId;
+  while (currentId) {
+    if (currentId === userId) {
+      throw new Error('This sponsorship link would create a cycle in the referral tree');
+    }
+    if (visited.has(currentId)) return; // pre-existing loop above; do not extend it
+    visited.add(currentId);
+    const current: { referredByUserId: string | null } | null = await prisma.user.findUnique({
+      where: { id: currentId },
+      select: { referredByUserId: true },
+    });
+    currentId = current?.referredByUserId ?? null;
+  }
+}
+
 export function buildTreeFromFlat(flatRows: any[]): TreeNode {
   const nodeMap = new Map<string, TreeNode>();
   let rootNode: TreeNode | null = null;

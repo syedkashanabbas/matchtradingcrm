@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { ChevronUp, ChevronDown } from 'lucide-react';
+import Link from 'next/link';
+import { ChevronUp, ChevronDown, Search, Users } from 'lucide-react';
 import { UserAvatar } from '@/components/shared/UserAvatar';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { useAdmin } from '@/lib/admin-hook';
@@ -9,6 +10,20 @@ import type { User } from '@/lib/types';
 
 type SortField = 'name' | 'email' | 'status' | 'tier' | 'signupDate';
 type SortDirection = 'asc' | 'desc';
+
+const provisioningChipClass = (status: string | undefined) => {
+  switch (status) {
+    case 'COMPLETED':
+      return 'bg-success/15 text-success border-success/25';
+    case 'FAILED':
+      return 'bg-destructive/10 text-destructive border-destructive/20';
+    case 'NOT_STARTED':
+    case undefined:
+      return 'bg-muted text-muted-foreground border-border';
+    default:
+      return 'bg-primary/10 text-primary border-primary/20';
+  }
+};
 
 export function UsersTable() {
   const { users, updateUserStatus } = useAdmin();
@@ -71,85 +86,88 @@ export function UsersTable() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {/* Search */}
-      <div>
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground" />
         <input
           type="text"
           placeholder="Search by name or email..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full rounded-lg border border-input bg-background px-4 py-2.5 text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+          aria-label="Search users by name or email"
+          className="h-10 w-full rounded-xl border border-input bg-background pl-10 pr-4 text-sm text-foreground placeholder:text-muted-foreground transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
         />
       </div>
 
       {/* Table */}
       <div className="overflow-x-auto">
-        <table className="w-full">
+        <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-border text-left text-sm font-medium text-muted-foreground">
+            <tr className="border-b border-border text-left">
               <th
-                className="py-3 px-4 cursor-pointer hover:text-foreground transition-colors"
+                className="cursor-pointer pb-3 pr-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
                 onClick={() => handleSort('name')}
               >
                 Name <SortIcon field="name" />
               </th>
               <th
-                className="py-3 px-4 cursor-pointer hover:text-foreground transition-colors"
+                className="cursor-pointer pb-3 pr-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
                 onClick={() => handleSort('email')}
               >
                 Email <SortIcon field="email" />
               </th>
               <th
-                className="py-3 px-4 cursor-pointer hover:text-foreground transition-colors"
+                className="cursor-pointer pb-3 pr-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
                 onClick={() => handleSort('status')}
               >
                 Status <SortIcon field="status" />
               </th>
               <th
-                className="py-3 px-4 cursor-pointer hover:text-foreground transition-colors"
+                className="cursor-pointer pb-3 pr-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
                 onClick={() => handleSort('tier')}
               >
                 Tier <SortIcon field="tier" />
               </th>
               <th
-                className="py-3 px-4 cursor-pointer hover:text-foreground transition-colors"
+                className="cursor-pointer pb-3 pr-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
                 onClick={() => handleSort('signupDate')}
               >
                 Signup Date <SortIcon field="signupDate" />
               </th>
-              <th className="py-3 px-4">Actions</th>
+              <th className="pb-3 pr-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Provisioning</th>
+              <th className="pb-3 pr-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Actions</th>
             </tr>
           </thead>
           <tbody>
             {filteredAndSortedUsers.map(user => (
               <tr
                 key={user.id}
-                className="border-b border-border hover:bg-muted/50 transition-colors"
+                className="border-b border-border/50 transition-colors hover:bg-muted/50"
               >
-                <td className="py-4 px-4">
-                  <div className="flex items-center gap-3">
+                <td className="py-3.5 pr-4">
+                  <Link href={`/dashboard/admin/users/${user.id}`} className="flex items-center gap-3 hover:underline">
                     <UserAvatar
                       src={user.avatar}
                       name={user.name}
                       size="sm"
                     />
                     <span className="font-medium text-foreground">{user.name}</span>
-                  </div>
+                  </Link>
                 </td>
-                <td className="py-4 px-4">
+                <td className="py-3.5 pr-4">
                   <span className="text-sm text-muted-foreground">{user.email}</span>
                 </td>
-                <td className="py-4 px-4">
+                <td className="py-3.5 pr-4">
                   <StatusBadge status={user.status} variant="subtle" />
                 </td>
-                <td className="py-4 px-4">
-                  <span className="inline-flex rounded-full bg-blue-100 dark:bg-blue-900/30 px-2.5 py-1 text-xs font-medium text-blue-700 dark:text-blue-400">
+                <td className="py-3.5 pr-4">
+                  <span className="inline-flex rounded-full border border-primary/20 bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
                     {user.tier}
                   </span>
                 </td>
-                <td className="py-4 px-4">
-                  <span className="text-sm text-muted-foreground">
+                <td className="py-3.5 pr-4">
+                  <span className="text-sm text-muted-foreground tabular-nums">
                     {new Date(user.signupDate).toLocaleDateString('en-US', {
                       month: 'short',
                       day: 'numeric',
@@ -157,11 +175,19 @@ export function UsersTable() {
                     })}
                   </span>
                 </td>
-                <td className="py-4 px-4">
+                <td className="py-3.5 pr-4">
+                  <span
+                    className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-medium ${provisioningChipClass(user.provisioningStatus)}`}
+                  >
+                    {(user.provisioningStatus ?? 'NOT_STARTED').replaceAll('_', ' ')}
+                  </span>
+                </td>
+                <td className="py-3.5 pr-4">
                   <select
                     value={user.status}
                     onChange={(e) => handleStatusUpdate(user.id, e.target.value)}
-                    className="text-sm border border-input rounded px-2 py-1 bg-background text-foreground focus:border-primary focus:outline-none"
+                    aria-label={`Update status for ${user.name}`}
+                    className="h-8 cursor-pointer rounded-lg border border-input bg-background px-2 text-xs font-medium text-foreground transition-colors hover:bg-muted/50 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                   >
                     <option value="active">Active</option>
                     <option value="suspended">Suspended</option>
@@ -175,8 +201,14 @@ export function UsersTable() {
       </div>
 
       {filteredAndSortedUsers.length === 0 && (
-        <div className="text-center py-8">
-          <p className="text-muted-foreground">No users found</p>
+        <div className="py-12 text-center">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+            <Users className="h-6 w-6" />
+          </div>
+          <p className="font-semibold text-foreground">No users found</p>
+          <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
+            Try a different name or email — new signups appear here automatically.
+          </p>
         </div>
       )}
     </div>

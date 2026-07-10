@@ -3,7 +3,10 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Eye, EyeOff } from 'lucide-react';
+import { AlertCircle, ArrowLeft, CheckCircle2, Eye, EyeOff } from 'lucide-react';
+
+const inputClasses =
+  'h-11 w-full rounded-xl border border-input bg-background px-4 pr-11 text-sm text-foreground placeholder:text-muted-foreground transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50';
 
 export function ResetPasswordForm() {
   const router = useRouter();
@@ -13,6 +16,7 @@ export function ResetPasswordForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [email, setEmail] = useState('');
+  const [otp, setOtp] = useState('');
 
   const [formData, setFormData] = useState({
     newPassword: '',
@@ -20,13 +24,15 @@ export function ResetPasswordForm() {
   });
 
   useEffect(() => {
-    // Get email from sessionStorage
+    // Get email + verified OTP from sessionStorage
     const storedEmail = sessionStorage.getItem('resetEmail');
-    if (!storedEmail) {
+    const storedOtp = sessionStorage.getItem('resetOtp');
+    if (!storedEmail || !storedOtp) {
       router.push('/forgot-password');
       return;
     }
     setEmail(storedEmail);
+    setOtp(storedOtp);
   }, [router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -41,8 +47,8 @@ export function ResetPasswordForm() {
       return;
     }
 
-    if (formData.newPassword.length < 6) {
-      setError('Password must be at least 6 characters long');
+    if (formData.newPassword.length < 8) {
+      setError('Password must be at least 8 characters long');
       setIsLoading(false);
       return;
     }
@@ -55,6 +61,7 @@ export function ResetPasswordForm() {
         },
         body: JSON.stringify({
           email,
+          otp,
           newPassword: formData.newPassword,
           confirmPassword: formData.confirmPassword,
         }),
@@ -67,10 +74,11 @@ export function ResetPasswordForm() {
       }
 
       setSuccess('Password reset successfully');
-      
+
       // Clear sessionStorage
       sessionStorage.removeItem('resetEmail');
-      
+      sessionStorage.removeItem('resetOtp');
+
       // Redirect to login page after 2 seconds
       setTimeout(() => {
         router.push('/login');
@@ -89,32 +97,34 @@ export function ResetPasswordForm() {
   };
 
   const getPasswordStrength = (password: string) => {
-    if (password.length < 6) return { text: 'Too short', color: 'text-red-500' };
-    if (password.length < 8) return { text: 'Weak', color: 'text-orange-500' };
-    if (!/[A-Z]/.test(password) || !/[a-z]/.test(password)) return { text: 'Fair', color: 'text-yellow-500' };
-    if (!/[0-9]/.test(password)) return { text: 'Good', color: 'text-blue-500' };
-    return { text: 'Strong', color: 'text-green-500' };
+    if (password.length < 6) return { text: 'Too short', color: 'text-destructive' };
+    if (password.length < 8) return { text: 'Weak', color: 'text-warning' };
+    if (!/[A-Z]/.test(password) || !/[a-z]/.test(password)) return { text: 'Fair', color: 'text-warning' };
+    if (!/[0-9]/.test(password)) return { text: 'Good', color: 'text-primary' };
+    return { text: 'Strong', color: 'text-success' };
   };
 
   const passwordStrength = getPasswordStrength(formData.newPassword);
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-5">
       {error && (
-        <div className="rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-3 text-sm text-red-700 dark:text-red-400">
+        <div className="flex items-center gap-3 rounded-xl border border-destructive/20 bg-destructive/10 p-4 text-sm font-medium text-destructive">
+          <AlertCircle className="h-5 w-5 shrink-0" />
           {error}
         </div>
       )}
 
       {success && (
-        <div className="rounded-lg border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20 p-3 text-sm text-green-700 dark:text-green-400">
+        <div className="flex items-center gap-3 rounded-xl border border-success/25 bg-success/10 p-4 text-sm font-medium text-success">
+          <CheckCircle2 className="h-5 w-5 shrink-0" />
           {success}
         </div>
       )}
 
-      <div className="text-center">
+      <div className="rounded-xl bg-muted/40 p-4 text-center">
         <p className="text-sm text-muted-foreground">
-          Resetting password for:
+          Resetting password for
         </p>
         <p className="font-medium text-foreground">{email}</p>
       </div>
@@ -133,25 +143,25 @@ export function ResetPasswordForm() {
             onChange={handleChange}
             disabled={isLoading}
             required
-            className="w-full rounded-lg border border-input bg-background px-4 py-2.5 text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all disabled:opacity-50"
+            className={inputClasses}
           />
           <button
             type="button"
             onClick={() => setShowPassword(!showPassword)}
-            className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground transition-colors"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
             aria-label="Toggle password visibility"
           >
             {showPassword ? (
-              <EyeOff className="h-5 w-5" />
+              <EyeOff className="h-[18px] w-[18px]" />
             ) : (
-              <Eye className="h-5 w-5" />
+              <Eye className="h-[18px] w-[18px]" />
             )}
           </button>
         </div>
         {formData.newPassword && (
           <div className="flex items-center justify-between text-xs">
-            <span className="text-muted-foreground">Password strength:</span>
-            <span className={passwordStrength.color}>{passwordStrength.text}</span>
+            <span className="text-muted-foreground">Password strength</span>
+            <span className={`font-medium ${passwordStrength.color}`}>{passwordStrength.text}</span>
           </div>
         )}
       </div>
@@ -170,42 +180,42 @@ export function ResetPasswordForm() {
             onChange={handleChange}
             disabled={isLoading}
             required
-            className="w-full rounded-lg border border-input bg-background px-4 py-2.5 text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all disabled:opacity-50"
+            className={inputClasses}
           />
           <button
             type="button"
             onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-            className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground transition-colors"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
             aria-label="Toggle confirm password visibility"
           >
             {showConfirmPassword ? (
-              <EyeOff className="h-5 w-5" />
+              <EyeOff className="h-[18px] w-[18px]" />
             ) : (
-              <Eye className="h-5 w-5" />
+              <Eye className="h-[18px] w-[18px]" />
             )}
           </button>
         </div>
         {formData.confirmPassword && formData.newPassword !== formData.confirmPassword && (
-          <p className="text-xs text-red-500">Passwords do not match</p>
+          <p className="text-xs text-destructive">Passwords do not match</p>
         )}
       </div>
 
-      <div className="bg-muted/50 rounded-lg p-3 text-xs text-muted-foreground">
-        <p className="font-medium mb-1">Password requirements:</p>
+      <div className="rounded-xl border border-border/80 bg-muted/40 p-4 text-xs text-muted-foreground">
+        <p className="mb-1.5 font-medium text-foreground">Password requirements</p>
         <ul className="space-y-1">
-          <li>• At least 6 characters long</li>
-          <li>• Mix of uppercase and lowercase letters (recommended)</li>
-          <li>• Include numbers (recommended)</li>
+          <li>At least 6 characters long</li>
+          <li>Mix of uppercase and lowercase letters (recommended)</li>
+          <li>Include numbers (recommended)</li>
         </ul>
       </div>
 
       <button
         type="submit"
         disabled={isLoading || !formData.newPassword || !formData.confirmPassword || formData.newPassword !== formData.confirmPassword}
-        className="w-full rounded-lg bg-primary px-4 py-2.5 font-medium text-primary-foreground transition-all hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+        className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/25 transition-all hover:bg-primary/90 hover:shadow-primary/30 disabled:cursor-not-allowed disabled:opacity-50"
       >
         {isLoading && (
-          <div className="h-4 w-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin" />
+          <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
         )}
         {isLoading ? 'Resetting...' : 'Reset Password'}
       </button>
@@ -213,9 +223,10 @@ export function ResetPasswordForm() {
       <div className="text-center">
         <Link
           href="/login"
-          className="text-sm text-muted-foreground hover:text-primary transition-colors"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-primary"
         >
-          ← Back to Sign In
+          <ArrowLeft className="h-4 w-4" />
+          Back to Sign In
         </Link>
       </div>
     </form>

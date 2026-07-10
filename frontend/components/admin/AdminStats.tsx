@@ -1,5 +1,5 @@
 import { StatsCard } from '@/components/dashboard/StatsCard';
-import { Users, UserCheck, UserPlus, UserX, Server, Briefcase, Building } from 'lucide-react';
+import { Users, UserCheck, UserPlus, UserX, Server, Briefcase } from 'lucide-react';
 
 interface AdminStatsProps {
   totalUsers: number;
@@ -8,8 +8,6 @@ interface AdminStatsProps {
   suspendedUsers: number;
   totalSubscriptions?: number;
   activeSubscriptions?: number;
-  totalVpsConfigs?: number;
-  activeVpsConfigs?: number;
   totalBrokerAccounts?: number;
   activeBrokerAccounts?: number;
   totalPropAccounts?: number;
@@ -23,8 +21,6 @@ export function AdminStats({
   suspendedUsers,
   totalSubscriptions = 0,
   activeSubscriptions = 0,
-  totalVpsConfigs = 0,
-  activeVpsConfigs = 0,
   totalBrokerAccounts = 0,
   activeBrokerAccounts = 0,
   totalPropAccounts = 0,
@@ -33,10 +29,10 @@ export function AdminStats({
   const activePercentage = Math.round((activeUsers / totalUsers) * 100);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* User Stats */}
       <div>
-        <h3 className="text-lg font-semibold text-foreground mb-4">User Statistics</h3>
+        <p className="eyebrow mb-4">User statistics</p>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <StatsCard
             icon={<Users className="h-6 w-6" />}
@@ -75,15 +71,8 @@ export function AdminStats({
 
       {/* Service Stats */}
       <div>
-        <h3 className="text-lg font-semibold text-foreground mb-4">Service Statistics</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <StatsCard
-            icon={<Building className="h-6 w-6" />}
-            label="VPS Configs"
-            value={`${totalVpsConfigs}`}
-            subtext="Total"
-            color="indigo"
-          />
+        <p className="eyebrow mb-4">Service statistics</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <StatsCard
             icon={<Briefcase className="h-6 w-6" />}
             label="Broker Accounts"

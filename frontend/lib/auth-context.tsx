@@ -16,7 +16,6 @@ interface AuthContextType {
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
-  updateApiKeys: (newKey: any) => void;
   updateUser: (userData: CurrentUser) => void;
 }
 
@@ -63,7 +62,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${response.user.firstName}`,
         phone: '',
         company: '',
-        apiKeys: [], // Will be loaded separately
         accountId: response.user.id,
         // Store tokens for API calls
         accessToken: response.accessToken,
@@ -91,17 +89,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     router.push('/login');
   }, [router]);
 
-  const updateApiKeys = useCallback((newKey: any) => {
-    if (user) {
-      const updatedUser = {
-        ...user,
-        apiKeys: [...(user.apiKeys || []), newKey]
-      };
-      setUser(updatedUser);
-      sessionStorage.setItem('auth-user', JSON.stringify(updatedUser));
-    }
-  }, [user]);
-
   const updateUser = useCallback((userData: CurrentUser) => {
     setUser(userData);
     sessionStorage.setItem('auth-user', JSON.stringify(userData));
@@ -115,7 +102,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isAuthenticated: !!user,
         login,
         logout,
-        updateApiKeys,
         updateUser,
       }}
     >

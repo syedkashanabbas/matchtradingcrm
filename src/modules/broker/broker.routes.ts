@@ -9,6 +9,8 @@ import {
   validateBroker,
   getBrokerStatistics,
   getSupportedBrokersList,
+  replaceBroker,
+  chooseHedgeBroker,
 } from "./broker.controller";
 
 const router = Router();
@@ -28,6 +30,9 @@ router.get("/", getBrokerList);
 // Get broker statistics
 router.get("/stats", getBrokerStatistics);
 
+// Designate the hedge broker (queued via the provisioning worker)
+router.post("/hedge-broker", chooseHedgeBroker);
+
 // Get specific broker account
 router.get("/:id", getBroker);
 
@@ -39,5 +44,8 @@ router.delete("/:id", deleteBroker);
 
 // Validate broker account
 router.post("/:id/validate", validateBroker);
+
+// Replace broker credentials (archives the old account, syncs EasierProp)
+router.post("/:id/replace", replaceBroker);
 
 export default router;

@@ -1,15 +1,16 @@
 import type { Metadata } from 'next'
-import { Geist, Geist_Mono } from 'next/font/google'
+import { Inter, Sora, JetBrains_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { AuthProvider } from '@/lib/auth-context'
 import './globals.css'
 
-const _geist = Geist({ subsets: ["latin"] });
-const _geistMono = Geist_Mono({ subsets: ["latin"] });
+const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' });
+const sora = Sora({ subsets: ['latin'], variable: '--font-sora', display: 'swap', weight: ['600', '700'] });
+const jetbrainsMono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-jetbrains-mono', display: 'swap' });
 
 export const metadata: Metadata = {
-  title: 'MatchTrading - CRM & API Management',
-  description: 'Manage your MatchTrading account, API keys, and subscriptions with a powerful dashboard',
+  title: 'EIDOS - CRM',
+  description: 'Manage your EIDOS account, trading setup and subscriptions with a powerful dashboard',
   generator: 'v0.app',
   icons: {
     icon: [
@@ -37,7 +38,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className="font-sans antialiased" suppressHydrationWarning>
+      <body className={`${inter.variable} ${sora.variable} ${jetbrainsMono.variable} font-sans antialiased`} suppressHydrationWarning>
         <AuthProvider>{children}</AuthProvider>
         <Analytics />
       </body>

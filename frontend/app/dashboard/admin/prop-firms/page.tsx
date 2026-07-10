@@ -2,7 +2,6 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { Zap, Search, MoreVertical } from 'lucide-react';
-import { StatusBadge } from '@/components/shared/StatusBadge';
 import { StatusDropdown } from '@/components/admin/StatusDropdown';
 import { apiClient } from '@/lib/api';
 
@@ -19,6 +18,13 @@ interface PropFirmAccount {
   createdAt: string;
 }
 
+const STATUS_TINTS: Record<string, string> = {
+  REVIEW: 'bg-warning/15 text-warning border-warning/25',
+  PENDING: 'bg-primary/10 text-primary border-primary/20',
+  CERTIFIED: 'bg-success/15 text-success border-success/25',
+  ACTIVE: 'bg-success/15 text-success border-success/25',
+};
+
 export default function AdminPropFirmsPage() {
   const [propFirmAccounts, setPropFirmAccounts] = useState<PropFirmAccount[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -34,7 +40,7 @@ export default function AdminPropFirmsPage() {
       // Get all prop firm configurations directly from admin endpoint
       const propResponse = await apiClient.getAllPropFirms();
       const propConfigs = (propResponse.data as any[]) || [];
-      
+
       // Transform the data to match the expected format
       const transformedProps = propConfigs.map((prop: any) => ({
         id: prop.id,
@@ -48,7 +54,7 @@ export default function AdminPropFirmsPage() {
         status: prop.status || 'PENDING', // Use actual status from database
         createdAt: prop.createdAt
       }));
-      
+
       setPropFirmAccounts(transformedProps);
     } catch (error) {
       console.error('Failed to load prop firm accounts:', error);
@@ -78,7 +84,7 @@ export default function AdminPropFirmsPage() {
 
   if (isLoading) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-8">
         <div className="animate-pulse">
           <div className="h-8 bg-muted rounded w-1/4 mb-4"></div>
           <div className="h-32 bg-muted rounded"></div>
@@ -88,99 +94,95 @@ export default function AdminPropFirmsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-foreground flex items-center gap-3">
-          <div className="h-10 w-10 rounded-lg bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
-            <Zap className="h-6 w-6 text-orange-600 dark:text-orange-400" />
-          </div>
-          Prop Firms Management
-        </h1>
-        <p className="text-muted-foreground mt-2">
-          {propFirmAccounts.length} prop firm accounts
+      <div className="animate-fade-in-up">
+        <p className="eyebrow">Connections</p>
+        <h1 className="page-title">Prop Firms</h1>
+        <p className="page-subtitle">
+          {propFirmAccounts.length} prop firm account{propFirmAccounts.length === 1 ? '' : 's'} connected across your clients
         </p>
       </div>
 
       {/* Prop Firms Table */}
-      <div className="rounded-2xl border border-border bg-card shadow-soft-md overflow-hidden">
+      <div className="animate-fade-in-up stagger-1 overflow-hidden rounded-2xl border border-border/80 bg-card elevation-1">
         {/* Search Bar */}
-        <div className="border-b border-border p-6">
-          <div className="relative">
-            <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+        <div className="border-b border-border/80 p-6">
+          <div className="relative max-w-md">
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <input
               type="text"
               placeholder="Search by user name, prop firm or account number..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full rounded-lg border border-input bg-background px-4 py-2.5 pl-10 text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+              className="h-10 w-full rounded-xl border border-input bg-background pl-10 pr-4 text-sm text-foreground placeholder:text-muted-foreground transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
             />
           </div>
         </div>
 
         {/* Table */}
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-border text-left text-sm font-medium text-muted-foreground bg-muted/30">
-                <th className="py-3 px-6">User</th>
-                <th className="py-3 px-6 cursor-pointer hover:text-foreground" onClick={() => setSortField('propFirmName')}>Prop Firm</th>
-                <th className="py-3 px-6">Account Number</th>
-                <th className="py-3 px-6">Phase</th>
-                <th className="py-3 px-6 cursor-pointer hover:text-foreground" onClick={() => setSortField('status')}>Status</th>
-                <th className="py-3 px-6">Action</th>
-                <th className="py-3 px-6">Connected Date</th>
-                <th className="py-3 px-6 text-right">Actions</th>
+              <tr className="border-b border-border text-left">
+                <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">User</th>
+                <th className="cursor-pointer px-6 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground" onClick={() => setSortField('propFirmName')}>Prop Firm</th>
+                <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Account Number</th>
+                <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Phase</th>
+                <th className="cursor-pointer px-6 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground" onClick={() => setSortField('status')}>Status</th>
+                <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Action</th>
+                <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Connected</th>
+                <th className="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">Actions</th>
               </tr>
             </thead>
             <tbody>
               {filteredPropFirms.map((pf) => (
                 <tr
                   key={pf.id}
-                  className="border-b border-border hover:bg-muted/50 transition-colors"
+                  className="border-b border-border/50 transition-colors hover:bg-muted/50"
                 >
-                  <td className="py-4 px-6">
+                  <td className="px-6 py-3.5">
                     <div>
                       <p className="font-medium text-foreground">{pf.userName}</p>
                     </div>
                   </td>
-                  <td className="py-4 px-6">
-                    <span className="inline-flex rounded-full bg-orange-100 dark:bg-orange-900/30 px-3 py-1 text-xs font-medium text-orange-700 dark:text-orange-400">
+                  <td className="px-6 py-3.5">
+                    <span className="inline-flex rounded-full border border-primary/20 bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
                       {pf.firmName}
                     </span>
                   </td>
-                  <td className="py-4 px-6">
-                    <code className="text-sm font-mono text-muted-foreground">{pf.mt5AccountNumber}</code>
+                  <td className="px-6 py-3.5">
+                    <code className="font-mono text-sm tabular-nums text-muted-foreground">{pf.mt5AccountNumber}</code>
                   </td>
-                  <td className="py-4 px-6">
-                    <span className="inline-flex rounded-full bg-indigo-100 dark:bg-indigo-900/30 px-3 py-1 text-xs font-medium text-indigo-700 dark:text-indigo-400">
+                  <td className="px-6 py-3.5">
+                    <span
+                      className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-medium ${
+                        pf.phase === 'FUNDED'
+                          ? 'border-success/25 bg-success/15 text-success'
+                          : 'border-primary/20 bg-primary/10 text-primary'
+                      }`}
+                    >
                       {pf.phase}
                     </span>
                   </td>
-                  <td className="py-4 px-6">
-                    <span 
-                      className={`inline-flex rounded-full px-3 py-1 text-xs font-medium`}
-                      style={{ 
-                        backgroundColor: 
-                          (pf.status || 'PENDING') === 'REVIEW' ? '#f59e0b' :
-                          (pf.status || 'PENDING') === 'PENDING' ? '#3b82f6' :
-                          (pf.status || 'PENDING') === 'CERTIFIED' ? '#10b981' :
-                          (pf.status || 'PENDING') === 'ACTIVE' ? '#22c55e' : '#6b7280',
-                        color: (pf.status || 'PENDING') === 'ACTIVE' ? 'white' : 'inherit'
-                      }}
+                  <td className="px-6 py-3.5">
+                    <span
+                      className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-medium ${
+                        STATUS_TINTS[pf.status || 'PENDING'] ?? 'border-border bg-muted text-muted-foreground'
+                      }`}
                     >
                       {pf.status || 'PENDING'}
                     </span>
                   </td>
-                  <td className="py-4 px-6">
+                  <td className="px-6 py-3.5">
                     <StatusDropdown
                       currentStatus={pf.status || 'PENDING'}
                       itemId={pf.id}
                       moduleType="propFirm"
                     />
                   </td>
-                  <td className="py-4 px-6">
-                    <span className="text-sm text-muted-foreground">
+                  <td className="px-6 py-3.5">
+                    <span className="text-sm tabular-nums text-muted-foreground">
                       {new Date(pf.createdAt).toLocaleDateString('en-US', {
                         month: 'short',
                         day: 'numeric',
@@ -188,8 +190,8 @@ export default function AdminPropFirmsPage() {
                       })}
                     </span>
                   </td>
-                  <td className="py-4 px-6 text-right">
-                    <button className="p-2 hover:bg-muted rounded-lg transition-colors">
+                  <td className="px-6 py-3.5 text-right">
+                    <button className="rounded-lg p-2 transition-colors hover:bg-muted" aria-label="More actions">
                       <MoreVertical className="h-4 w-4 text-muted-foreground" />
                     </button>
                   </td>
@@ -200,8 +202,14 @@ export default function AdminPropFirmsPage() {
         </div>
 
         {filteredPropFirms.length === 0 && (
-          <div className="text-center py-12">
-            <p className="text-muted-foreground">No prop firm accounts found</p>
+          <div className="py-12 text-center">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+              <Zap className="h-6 w-6" />
+            </div>
+            <p className="font-semibold text-foreground">No prop firm accounts found</p>
+            <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
+              Try a different user, firm or account number.
+            </p>
           </div>
         )}
       </div>

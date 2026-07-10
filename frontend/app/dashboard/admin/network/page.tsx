@@ -286,10 +286,10 @@ export default function AdminNetworkPage() {
 
   if (loading) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-8">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Network</h1>
-          <p className="text-muted-foreground mt-2">Manage your referral network and track growth</p>
+          <h1 className="page-title">Network</h1>
+          <p className="page-subtitle">Manage your referral network and track growth</p>
         </div>
         
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -311,7 +311,7 @@ export default function AdminNetworkPage() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold text-foreground">Network</h1>
+        <h1 className="page-title text-foreground">Network</h1>
         <p className="text-muted-foreground mt-2">Manage your referral network and track growth</p>
       </div>
 

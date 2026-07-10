@@ -18,22 +18,24 @@ export default function AdminUsersPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-foreground flex items-center gap-3">
-          <div className="h-10 w-10 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-            <Users className="h-6 w-6 text-blue-600 dark:text-blue-400" />
-          </div>
-          User Management
-        </h1>
-        <p className="text-muted-foreground mt-2">
-          Manage all user accounts and permissions
+      <div className="animate-fade-in-up">
+        <p className="eyebrow">Administration</p>
+        <h1 className="page-title">User Management</h1>
+        <p className="page-subtitle">
+          Every account, its status and provisioning — search, sort and act.
         </p>
       </div>
 
       {/* Users Table */}
-      <div className="rounded-2xl border border-border bg-card shadow-soft-md overflow-hidden p-6">
+      <div className="animate-fade-in-up stagger-1 rounded-2xl border border-border/80 bg-card elevation-1 p-6">
+        <div className="mb-6 flex items-center gap-2.5">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <Users className="h-[18px] w-[18px]" />
+          </div>
+          <h2 className="font-display text-lg font-semibold text-foreground">All Users</h2>
+        </div>
         <UsersTable />
       </div>
     </div>

@@ -6,6 +6,15 @@ import { assignUplineSchema, changeUplineSchema } from '../../validators/network
 const prisma = new PrismaClient();
 const adminNetworkService = new AdminNetworkService(prisma);
 
+export const getMemberships = async (req: Request, res: Response) => {
+  try {
+    const data = await adminNetworkService.getMemberships();
+    res.json({ success: true, data });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: { code: 'MEMBERSHIPS_FAILED', message: error.message } });
+  }
+};
+
 export const getOverview = async (req: Request, res: Response) => {
   try {
     const result = await adminNetworkService.getOverview();

@@ -13,7 +13,7 @@ export default function AdminProfilePage() {
 
   if (isLoading || !user) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-8">
         <LoadingSkeleton variant="card" />
         <LoadingSkeleton variant="card" count={2} />
       </div>
@@ -28,9 +28,9 @@ export default function AdminProfilePage() {
           <div className="h-10 w-10 rounded-lg bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center">
             <Shield className="h-6 w-6 text-indigo-600 dark:text-indigo-400" />
           </div>
-          <h1 className="text-3xl font-bold text-foreground">Admin Profile</h1>
+          <h1 className="page-title">Admin Profile</h1>
         </div>
-        <p className="text-muted-foreground mt-2">
+        <p className="page-subtitle">
           Manage your admin account information and preferences
         </p>
       </div>
@@ -42,7 +42,7 @@ export default function AdminProfilePage() {
         </CardHeader>
         <CardContent>
           <div className="flex flex-col sm:flex-row sm:items-center gap-6">
-            <UserAvatar user={user} size="lg" />
+            <UserAvatar name={user.name} src={user.avatar} size="lg" />
             <div className="flex-1">
               <h2 className="text-2xl font-bold text-foreground">
                 {user.firstName} {user.lastName}

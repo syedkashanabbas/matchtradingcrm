@@ -1,243 +1,283 @@
 import { prisma } from "../../config/prisma";
 import { stripe } from "../../config/stripe";
 import { env } from "../../config/env-validation";
-import { PlanType, SubscriptionStatus, ClientStatus } from "@prisma/client";
+import { SubscriptionStatus, ClientStatus } from "@prisma/client";
+import { completeStep } from "../onboarding/onboarding.service";
+import { maybeTriggerProvisioning } from "../provisioning/provisioning.service";
+import { enqueueServiceCommand } from "../provisioning/service-control.service";
+import { getPlanCatalog, getPlanByCode, Plan } from "./plan-catalog";
+import * as coingate from "../../integrations/coingate/client";
+import { generateSecureToken } from "../../utils/encryption";
 
-export const createFreeSubscription = async (userId: string, planType: PlanType = PlanType.FREE) => {
-  // DEBUG: Log subscription creation
-  console.log('🔍 DEBUG - createFreeSubscription:');
-  console.log('User ID:', userId);
-  console.log('Plan type:', planType);
-  console.log('Plan type type:', typeof planType);
-  console.log('PlanType.FREE:', PlanType.FREE);
-  
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-  });
+const GRACE_PERIOD_DAYS = parseInt(process.env.GRACE_PERIOD_DAYS || "7", 10);
 
-  if (!user) {
-    throw new Error("User not found");
-  }
+// ------------------------------------------------------------------
+// Catalog
+// ------------------------------------------------------------------
 
-  // Create subscription in database
-  const subscription = await prisma.subscription.create({
-    data: {
+export const getSubscriptionPlans = (): Plan[] => getPlanCatalog();
+
+// ------------------------------------------------------------------
+// Checkout (card via Stripe, crypto via CoinGate)
+// ------------------------------------------------------------------
+
+export const createCardCheckout = async (userId: string, planCode: string) => {
+  const plan = getPlanByCode(planCode);
+  if (!plan) throw new Error(`Unknown plan: ${planCode}`);
+  if (!plan.stripePriceId) throw new Error(`Plan ${plan.code} has no Stripe price configured`);
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw new Error("User not found");
+
+  // Guard against double billing: one recurring Stripe subscription per user.
+  // Plan changes for card subscribers go through the Customer Portal.
+  const existingStripe = await prisma.subscription.findFirst({
+    where: {
       userId,
-      stripeSubscriptionId: `${planType.toLowerCase()}_${userId}_${Date.now()}`,
-      stripeCustomerId: `${planType.toLowerCase()}_customer_${userId}`,
-      plan: planType,
-      status: SubscriptionStatus.ACTIVE,
-      currentPeriodStart: new Date(),
-      currentPeriodEnd: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 year from now
+      provider: "stripe",
+      status: { in: ["ACTIVE", "PAST_DUE"] },
+      stripeSubscriptionId: { not: null },
+      currentPeriodEnd: { gt: new Date() },
     },
   });
-  
-  console.log('Created subscription in DB:', subscription);
-
-  // Update user status
-  await updateUserStatusBasedOnSubscription(userId);
-
-  return subscription;
-};
-
-export const createSubscription = async (userId: string, plan: PlanType) => {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-  });
-
-  if (!user) {
-    throw new Error("User not found");
+  if (existingStripe) {
+    throw new Error(
+      "You already have an active card subscription - manage or change your plan from the Customer Portal"
+    );
   }
 
-  // Create or retrieve Stripe customer
   let stripeCustomerId = user.stripeCustomerId;
   if (!stripeCustomerId) {
     const customer = await stripe.customers.create({
       email: user.email,
-      metadata: {
-        userId: user.id,
-      },
+      metadata: { userId: user.id },
     });
     stripeCustomerId = customer.id;
-    
-    // Update user with Stripe customer ID
-    await prisma.user.update({
-      where: { id: userId },
-      data: { stripeCustomerId },
-    });
+    await prisma.user.update({ where: { id: userId }, data: { stripeCustomerId } });
   }
 
-  // Determine price based on plan
-  const priceMap = {
-    FREE: env.STRIPE_FREE_PRICE_ID,
-    PRO: env.STRIPE_PRO_PRICE_ID,
-    ENTERPRISE: env.STRIPE_ENTERPRISE_PRICE_ID,
-  };
-
-  const priceId = priceMap[plan];
-  if (!priceId) {
-    throw new Error(`No price ID configured for ${plan} plan`);
-  }
-
-  // For development, if price ID looks like a product ID, create a fallback
-  if (priceId.startsWith('prod_')) {
-    console.warn(`Invalid price ID detected: ${priceId}. Price IDs should start with 'price_'.`);
-    
-    // Try to create a price from the product ID (fallback for development)
-    try {
-      const product = await stripe.products.retrieve(priceId);
-      const prices = await stripe.prices.list({
-        product: priceId,
-        active: true,
-        limit: 1
-      });
-      
-      if (prices.data.length > 0) {
-        console.log(`Found active price: ${prices.data[0].id}`);
-        const validPriceId = prices.data[0].id;
-        
-        // Create checkout session with valid price
-        const session = await stripe.checkout.sessions.create({
-          customer: stripeCustomerId,
-          payment_method_types: ["card"],
-          mode: "subscription",
-          line_items: [
-            {
-              price: validPriceId,
-              quantity: 1,
-            },
-          ],
-          success_url: `${env.CLIENT_URL}/dashboard/client/onboarding/review?success=true`,
-          cancel_url: `${env.CLIENT_URL}/dashboard/client/onboarding/payment?canceled=true`,
-          metadata: {
-            userId,
-            plan,
-          },
-        });
-        
-        return session;
-      } else {
-        throw new Error(`No active prices found for product ${priceId}`);
-      }
-    } catch (error) {
-      console.error('Error retrieving product prices:', error);
-      throw new Error(`Invalid price configuration for ${plan} plan. Please check your Stripe price IDs.`);
-    }
-  }
-
-  // Create Stripe checkout session
   const session = await stripe.checkout.sessions.create({
     customer: stripeCustomerId,
     payment_method_types: ["card"],
     mode: "subscription",
-    line_items: [
-      {
-        price: priceId,
-        quantity: 1,
-      },
-    ],
+    line_items: [{ price: plan.stripePriceId, quantity: 1 }],
     success_url: `${env.CLIENT_URL}/dashboard/client/onboarding/review?success=true`,
     cancel_url: `${env.CLIENT_URL}/dashboard/client/onboarding/payment?canceled=true`,
-    metadata: {
-      userId,
-      plan,
-    },
+    metadata: { userId, plan: plan.code },
+    subscription_data: { metadata: { userId, plan: plan.code } },
   });
 
-  return session;
+  return { url: session.url };
 };
 
-export const handleSubscriptionCreated = async (subscriptionId: string) => {
-  const stripeSubscription = await stripe.subscriptions.retrieve(subscriptionId);
-  
-  const userId = stripeSubscription.metadata.userId;
-  const plan = stripeSubscription.metadata.plan as PlanType;
+export const createCryptoCheckout = async (
+  userId: string,
+  planCode: string,
+  purpose: "subscription" | "renewal" = "subscription"
+) => {
+  const plan = getPlanByCode(planCode);
+  if (!plan) throw new Error(`Unknown plan: ${planCode}`);
 
-  if (!userId || !plan) {
-    throw new Error("Invalid subscription metadata");
-  }
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw new Error("User not found");
 
-  // Create subscription in database
-  const subscription = await prisma.subscription.create({
+  const localOrderId = `eidos-${purpose}-${generateSecureToken(8)}`;
+  const ipnToken = generateSecureToken(24);
+
+  const record = await prisma.cryptoOrder.create({
     data: {
       userId,
-      stripeSubscriptionId: subscriptionId,
-      stripeCustomerId: stripeSubscription.customer as string,
-      plan,
-      status: SubscriptionStatus.ACTIVE,
-      currentPeriodStart: new Date((stripeSubscription as any).current_period_start * 1000),
-      currentPeriodEnd: new Date((stripeSubscription as any).current_period_end * 1000),
+      planCode: plan.code,
+      localOrderId,
+      ipnToken,
+      amount: plan.price,
+      currency: plan.currency,
+      purpose,
     },
   });
 
-  // Update user status
-  await updateUserStatusBasedOnSubscription(userId);
+  const serverUrl = process.env.SERVER_URL || `http://localhost:${env.PORT}`;
+  const order = await coingate.createOrder({
+    localOrderId,
+    amount: plan.price,
+    currency: plan.currency,
+    title: `EIDOS ${plan.name} - ${purpose === "renewal" ? "renewal" : "subscription"}`,
+    description: `${plan.name} plan (${plan.price} ${plan.currency}/${plan.interval})`,
+    callbackUrl: `${serverUrl}/webhooks/coingate`,
+    successUrl: `${env.CLIENT_URL}/dashboard/client/onboarding/payment/result?order=${record.id}`,
+    cancelUrl: `${env.CLIENT_URL}/dashboard/client/onboarding/payment?canceled=true`,
+    ipnToken,
+  });
+
+  await prisma.cryptoOrder.update({
+    where: { id: record.id },
+    data: {
+      coingateOrderId: String(order.id),
+      status: order.status ?? "new",
+      paymentUrl: order.payment_url ?? null,
+    },
+  });
+
+  return { url: order.payment_url, orderId: record.id };
+};
+
+// ------------------------------------------------------------------
+// Activation - shared by the Stripe webhook and the CoinGate IPN
+// ------------------------------------------------------------------
+
+export interface PaymentActivation {
+  userId: string;
+  planCode: string;
+  provider: "stripe" | "coingate";
+  /** stripe subscription id or coingate order id */
+  externalRef: string;
+  periodStart: Date;
+  periodEnd: Date;
+  stripeCustomerId?: string;
+}
+
+/**
+ * Creates or renews the user's subscription after a confirmed payment.
+ * Same state transitions for both providers (spec §6.2 flow step 3).
+ */
+export const activateSubscriptionFromPayment = async (activation: PaymentActivation) => {
+  const existing =
+    activation.provider === "stripe"
+      ? await prisma.subscription.findUnique({
+          where: { stripeSubscriptionId: activation.externalRef },
+        })
+      : await prisma.subscription.findFirst({
+          where: { userId: activation.userId, provider: "coingate" },
+          orderBy: { createdAt: "desc" },
+        });
+
+  let subscription;
+  if (existing) {
+    subscription = await prisma.subscription.update({
+      where: { id: existing.id },
+      data: {
+        status: SubscriptionStatus.ACTIVE,
+        plan: activation.planCode,
+        currentPeriodStart: activation.periodStart,
+        currentPeriodEnd: activation.periodEnd,
+        gracePeriodEnd: null,
+        ...(activation.provider === "coingate" ? { externalOrderId: activation.externalRef } : {}),
+      },
+    });
+  } else {
+    subscription = await prisma.subscription.create({
+      data: {
+        userId: activation.userId,
+        provider: activation.provider,
+        plan: activation.planCode,
+        status: SubscriptionStatus.ACTIVE,
+        currentPeriodStart: activation.periodStart,
+        currentPeriodEnd: activation.periodEnd,
+        ...(activation.provider === "stripe"
+          ? {
+              stripeSubscriptionId: activation.externalRef,
+              stripeCustomerId: activation.stripeCustomerId,
+            }
+          : { externalOrderId: activation.externalRef }),
+      },
+    });
+  }
+
+  await prisma.user.update({
+    where: { id: activation.userId },
+    data: {
+      status: ClientStatus.ACTIVE,
+      subscriptionEnd: activation.periodEnd,
+      gracePeriodEnd: null,
+    },
+  });
+
+  // Onboarding payment step + provisioning trigger + service reactivation
+  await completeStep(activation.userId, "payment");
+  await maybeTriggerProvisioning(activation.userId);
+  await reactivateServiceIfPaused(activation.userId);
 
   return subscription;
 };
 
-export const handleSubscriptionPaymentFailed = async (subscriptionId: string) => {
-  const subscription = await prisma.subscription.update({
-    where: { stripeSubscriptionId: subscriptionId },
-    data: {
-      status: SubscriptionStatus.PAST_DUE,
-    },
-  });
+// ------------------------------------------------------------------
+// Failure / cancellation transitions
+// ------------------------------------------------------------------
 
-  // Start grace period (7 days from now)
+/** Payment failed -> PAST_DUE + grace period + notifications + service Stop (§6.1/§5.5). */
+export const handleSubscriptionPaymentFailed = async (stripeSubscriptionId: string) => {
+  const subscription = await prisma.subscription.findUnique({
+    where: { stripeSubscriptionId },
+  });
+  if (!subscription) {
+    console.warn(`Payment failed for unknown subscription ${stripeSubscriptionId}`);
+    return null;
+  }
+
+  return applyPaymentFailure(subscription.id);
+};
+
+export const applyPaymentFailure = async (subscriptionId: string) => {
   const gracePeriodEnd = new Date();
-  gracePeriodEnd.setDate(gracePeriodEnd.getDate() + 7);
+  gracePeriodEnd.setDate(gracePeriodEnd.getDate() + GRACE_PERIOD_DAYS);
+
+  const subscription = await prisma.subscription.update({
+    where: { id: subscriptionId },
+    data: { status: SubscriptionStatus.PAST_DUE, gracePeriodEnd },
+  });
 
   await prisma.user.update({
     where: { id: subscription.userId },
-    data: {
-      status: ClientStatus.SUSPENDED,
-      gracePeriodEnd,
-    },
+    data: { status: ClientStatus.SUSPENDED, gracePeriodEnd },
   });
 
-  // Create alert for user
-  await createAlert(subscription.userId, "PAYMENT_FAILURE", "Payment Failed", "Your subscription payment has failed. Please update your payment method.", "HIGH");
+  await createAlert(
+    subscription.userId,
+    "PAYMENT_FAILURE",
+    "Payment Failed",
+    `Your subscription payment has failed. You have ${GRACE_PERIOD_DAYS} days to update your payment method before the service is suspended permanently.`,
+    "HIGH"
+  );
+
+  await suspendServiceIfActive(subscription.userId);
 
   return subscription;
 };
 
-export const handleSubscriptionDeleted = async (subscriptionId: string) => {
+export const handleSubscriptionDeleted = async (stripeSubscriptionId: string) => {
   const subscription = await prisma.subscription.findUnique({
-    where: { stripeSubscriptionId: subscriptionId },
+    where: { stripeSubscriptionId },
   });
+  if (!subscription) throw new Error("Subscription not found");
 
-  if (!subscription) {
-    throw new Error("Subscription not found");
-  }
-
-  // Update subscription status
   await prisma.subscription.update({
     where: { id: subscription.id },
-    data: {
-      status: SubscriptionStatus.CANCELED,
-    },
+    data: { status: SubscriptionStatus.CANCELED },
   });
 
-  // Deactivate user
   await prisma.user.update({
     where: { id: subscription.userId },
-    data: {
-      status: ClientStatus.INACTIVE,
-    },
+    data: { status: ClientStatus.INACTIVE },
   });
 
-  // Create alert for user
-  await createAlert(subscription.userId, "SUBSCRIPTION_EXPIRED", "Subscription Canceled", "Your subscription has been canceled and your service has been deactivated.", "CRITICAL");
+  await createAlert(
+    subscription.userId,
+    "SUBSCRIPTION_EXPIRED",
+    "Subscription Canceled",
+    "Your subscription has been canceled and your service has been deactivated.",
+    "CRITICAL"
+  );
+
+  // Suspend now; permanent EasierProp deletion needs admin confirmation (§5.5)
+  await suspendServiceIfActive(subscription.userId);
+  await notifyAdminsOfCancellation(subscription.userId);
 
   return subscription;
 };
 
-export const handleInvoicePaymentFailed = async (invoiceId: string) => {
-  // This function is called by webhook handler
-  // The actual logic is in the webhook handler
-  console.log(`Invoice payment failed: ${invoiceId}`);
-};
+// ------------------------------------------------------------------
+// Reads
+// ------------------------------------------------------------------
 
 export const getUserSubscription = async (userId: string) => {
   const subscription = await prisma.subscription.findFirst({
@@ -245,67 +285,115 @@ export const getUserSubscription = async (userId: string) => {
     orderBy: { createdAt: "desc" },
   });
 
-  // DEBUG: Log subscription from database
-  console.log('🔍 DEBUG - getUserSubscription:');
-  console.log('User ID:', userId);
-  console.log('Raw subscription from DB:', subscription);
-  console.log('Plan from DB:', subscription?.plan);
-  
-  if (!subscription) {
-    console.log('No subscription found, returning null');
-    return null;
+  if (!subscription) return null;
+
+  const plan = getPlanByCode(subscription.plan);
+  return {
+    ...subscription,
+    planName: plan?.name ?? subscription.plan,
+    price: plan ? `${plan.price} ${plan.currency}/${plan.interval}` : null,
+  };
+};
+
+/** Client invoices: Stripe invoices + CoinGate orders, newest first (§6.1). */
+export const listInvoices = async (userId: string) => {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw new Error("User not found");
+
+  const invoices: Array<{
+    id: string;
+    provider: string;
+    amount: number;
+    currency: string;
+    status: string;
+    date: string;
+    url: string | null;
+  }> = [];
+
+  if (user.stripeCustomerId) {
+    try {
+      const stripeInvoices = await stripe.invoices.list({
+        customer: user.stripeCustomerId,
+        limit: 24,
+      });
+      for (const invoice of stripeInvoices.data) {
+        invoices.push({
+          id: invoice.number ?? invoice.id ?? "unknown",
+          provider: "stripe",
+          amount: (invoice.amount_paid || invoice.amount_due) / 100,
+          currency: (invoice.currency ?? "eur").toUpperCase(),
+          status: invoice.status ?? "unknown",
+          date: new Date(invoice.created * 1000).toISOString(),
+          url: invoice.hosted_invoice_url ?? null,
+        });
+      }
+    } catch (error: any) {
+      console.error("Failed to list Stripe invoices:", error.message);
+    }
   }
 
-  // Calculate price based on plan type
-  const getPriceForPlan = (plan: string): string => {
-    console.log('Calculating price for plan:', plan);
-    switch (plan) {
-      case 'FREE':
-        return '$0/month';
-      case 'PRO':
-        return '$99/month';
-      case 'ENTERPRISE':
-        return '$299/month';
-      default:
-        return '$0/month';
-    }
-  };
+  const cryptoOrders = await prisma.cryptoOrder.findMany({
+    where: { userId, status: { in: ["paid", "confirming", "pending"] } },
+    orderBy: { createdAt: "desc" },
+    take: 24,
+  });
+  for (const order of cryptoOrders) {
+    invoices.push({
+      id: order.localOrderId,
+      provider: "coingate",
+      amount: Number(order.amount),
+      currency: order.currency,
+      status: order.status,
+      date: order.createdAt.toISOString(),
+      url: null,
+    });
+  }
 
-  // Add calculated price to subscription object
-  const subscriptionWithPrice = {
-    ...subscription,
-    price: getPriceForPlan(subscription.plan)
-  };
-
-  console.log('Final subscription with price:', subscriptionWithPrice);
-  return subscriptionWithPrice;
+  invoices.sort((a, b) => (a.date < b.date ? 1 : -1));
+  return invoices;
 };
+
+/** Stripe Customer Portal session (§6.1). */
+export const createPortalSession = async (userId: string) => {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user?.stripeCustomerId) {
+    throw new Error("No Stripe customer for this user (card payments only)");
+  }
+
+  const session = await stripe.billingPortal.sessions.create({
+    customer: user.stripeCustomerId,
+    return_url: `${env.CLIENT_URL}/dashboard/settings/subscription`,
+  });
+
+  return { url: session.url };
+};
+
+// ------------------------------------------------------------------
+// Cancel / reactivate
+// ------------------------------------------------------------------
 
 export const cancelSubscription = async (userId: string, immediate: boolean = false) => {
   const subscription = await prisma.subscription.findFirst({
     where: { userId },
+    orderBy: { createdAt: "desc" },
   });
+  if (!subscription) throw new Error("No active subscription found");
 
-  if (!subscription) {
-    throw new Error("No active subscription found");
+  if (subscription.provider === "stripe" && subscription.stripeSubscriptionId) {
+    if (immediate) {
+      await stripe.subscriptions.cancel(subscription.stripeSubscriptionId);
+    } else {
+      await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
+        cancel_at_period_end: true,
+      });
+    }
   }
+  // Crypto has no recurring charge: cancelling just means "don't renew".
 
-  if (immediate) {
-    // Cancel immediately
-    await stripe.subscriptions.cancel(subscription.stripeSubscriptionId);
-  } else {
-    // Cancel at period end
-    await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
-      cancel_at_period_end: true,
-    });
-
-    await prisma.subscription.update({
-      where: { id: subscription.id },
-      data: {
-        cancelAtPeriodEnd: true,
-      },
-    });
-  }
+  await prisma.subscription.update({
+    where: { id: subscription.id },
+    data: { cancelAtPeriodEnd: true },
+  });
 
   return subscription;
 };
@@ -313,119 +401,70 @@ export const cancelSubscription = async (userId: string, immediate: boolean = fa
 export const reactivateSubscription = async (userId: string) => {
   const subscription = await prisma.subscription.findFirst({
     where: { userId },
-  });
-
-  if (!subscription) {
-    throw new Error("No subscription found");
-  }
-
-  // Update Stripe subscription
-  await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
-    cancel_at_period_end: false,
-  });
-
-  // Update database
-  const updatedSubscription = await prisma.subscription.update({
-    where: { id: subscription.id },
-    data: {
-      status: SubscriptionStatus.ACTIVE,
-      cancelAtPeriodEnd: false,
-    },
-  });
-
-  // Update user status
-  await updateUserStatusBasedOnSubscription(userId);
-
-  return updatedSubscription;
-};
-
-export const updateUserStatusBasedOnSubscription = async (userId: string) => {
-  const subscription = await prisma.subscription.findFirst({
-    where: { userId },
     orderBy: { createdAt: "desc" },
   });
+  if (!subscription) throw new Error("No subscription found");
 
-  if (!subscription) {
-    await prisma.user.update({
-      where: { id: userId },
-      data: { status: ClientStatus.NEW },
+  if (subscription.provider === "stripe" && subscription.stripeSubscriptionId) {
+    await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
+      cancel_at_period_end: false,
     });
-    return;
   }
 
-  const now = new Date();
-  let userStatus: ClientStatus;
+  const updated = await prisma.subscription.update({
+    where: { id: subscription.id },
+    data: { cancelAtPeriodEnd: false },
+  });
 
-  if (subscription.status === SubscriptionStatus.ACTIVE && subscription.currentPeriodEnd > now) {
-    userStatus = ClientStatus.ACTIVE;
-  } else if (subscription.status === SubscriptionStatus.PAST_DUE) {
-    userStatus = ClientStatus.SUSPENDED;
-  } else {
-    userStatus = ClientStatus.INACTIVE;
+  return updated;
+};
+
+// ------------------------------------------------------------------
+// Service-state helpers (M2 wiring)
+// ------------------------------------------------------------------
+
+export const suspendServiceIfActive = async (userId: string) => {
+  const hedge = await prisma.hedgeSetup.findFirst({ where: { userId, status: "active" } });
+  if (hedge) {
+    await enqueueServiceCommand(userId, "STOP", {}, "system:subscription");
   }
+};
 
-  await prisma.user.update({
-    where: { id: userId },
-    data: { 
-      status: userStatus,
-      subscriptionEnd: subscription.currentPeriodEnd,
-    },
+export const reactivateServiceIfPaused = async (userId: string) => {
+  // Cancel any STOP still waiting in the queue - the payment that just landed
+  // supersedes it (prevents a stale STOP from suspending a paying user).
+  const cancelled = await prisma.serviceCommand.updateMany({
+    where: { userId, type: "STOP", status: "PENDING" },
+    data: { status: "FAILED", lastError: "cancelled: subscription reactivated before execution" },
+  });
+
+  const hedge = await prisma.hedgeSetup.findFirst({ where: { userId, status: "paused" } });
+  if (hedge || cancelled.count > 0) {
+    await enqueueServiceCommand(userId, "START", {}, "system:subscription");
+  }
+};
+
+const notifyAdminsOfCancellation = async (userId: string) => {
+  const admins = await prisma.user.findMany({ where: { role: "ADMIN" }, select: { id: true } });
+  await prisma.alert.createMany({
+    data: admins.map(admin => ({
+      userId: admin.id,
+      type: "SERVICE_STATE" as const,
+      title: "Subscription cancelled - confirm service deletion",
+      message: `Subscription for user ${userId} was permanently cancelled. The service was suspended; confirm permanent EasierProp deletion from the client detail page.`,
+      severity: "HIGH" as const,
+    })),
   });
 };
 
-export const getSubscriptionPlans = () => {
-  return [
-    {
-      id: "FREE",
-      name: "Free Plan",
-      price: 0,
-      features: [
-        "1 API key",
-        "100 API calls/month",
-        "Email support",
-        "Basic configuration",
-      ],
-      stripePriceId: env.STRIPE_FREE_PRICE_ID,
-    },
-    {
-      id: "PRO",
-      name: "Pro Plan",
-      price: 29.99,
-      features: [
-        "5 API keys",
-        "1000 API calls/month",
-        "Priority email support",
-        "Advanced configuration",
-        "Device tracking",
-      ],
-      stripePriceId: env.STRIPE_PRO_PRICE_ID,
-    },
-    {
-      id: "ENTERPRISE",
-      name: "Enterprise Plan",
-      price: 99.99,
-      features: [
-        "Unlimited API keys",
-        "Unlimited API calls",
-        "Priority phone support",
-        "Custom configurations",
-        "Advanced analytics",
-        "Dedicated support",
-      ],
-      stripePriceId: env.STRIPE_ENTERPRISE_PRICE_ID,
-    },
-  ];
-};
-
-// Helper function to create alerts
-const createAlert = async (userId: string, type: any, title: string, message: string, severity: any) => {
+const createAlert = async (
+  userId: string,
+  type: "PAYMENT_FAILURE" | "SUBSCRIPTION_EXPIRED",
+  title: string,
+  message: string,
+  severity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL"
+) => {
   return prisma.alert.create({
-    data: {
-      userId,
-      type,
-      title,
-      message,
-      severity,
-    },
+    data: { userId, type, title, message, severity },
   });
 };

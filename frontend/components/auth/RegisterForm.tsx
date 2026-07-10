@@ -3,10 +3,30 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Eye, EyeOff } from 'lucide-react';
+import { AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { useAuthContext } from '@/lib/auth-context';
 import { apiClient } from '@/lib/api';
 import { ReferralAlert } from '@/components/ui/referral-alert';
+
+const COUNTRIES = [
+  'Italy', 'United Kingdom', 'United States', 'Germany', 'France', 'Spain', 'Portugal',
+  'Netherlands', 'Belgium', 'Switzerland', 'Austria', 'Ireland', 'Sweden', 'Norway',
+  'Denmark', 'Finland', 'Poland', 'Czech Republic', 'Slovakia', 'Hungary', 'Romania',
+  'Bulgaria', 'Greece', 'Croatia', 'Slovenia', 'Estonia', 'Latvia', 'Lithuania',
+  'Luxembourg', 'Malta', 'Cyprus', 'Canada', 'Australia', 'New Zealand', 'Japan',
+  'Singapore', 'Hong Kong', 'United Arab Emirates', 'Saudi Arabia', 'Qatar', 'Israel',
+  'Turkey', 'South Africa', 'Brazil', 'Argentina', 'Mexico', 'Chile', 'Colombia',
+  'India', 'Pakistan', 'Bangladesh', 'Indonesia', 'Malaysia', 'Thailand', 'Vietnam',
+  'Philippines', 'South Korea', 'Nigeria', 'Kenya', 'Egypt', 'Morocco', 'Other',
+];
+
+const baseFieldClasses =
+  'h-11 w-full rounded-xl border px-4 text-sm text-foreground placeholder:text-muted-foreground transition-all focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50';
+
+const fieldStateClasses = (hasError: boolean) =>
+  hasError
+    ? 'border-destructive bg-background focus:border-destructive'
+    : 'border-input bg-background focus:border-primary';
 
 export function RegisterForm() {
   const router = useRouter();
@@ -17,6 +37,7 @@ export function RegisterForm() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [agreeToTerms, setAgreeToTerms] = useState(false);
+  const [agreeToPrivacy, setAgreeToPrivacy] = useState(false);
   const [referralCode, setReferralCode] = useState('');
   const [showReferralBanner, setShowReferralBanner] = useState(false);
   const [inviterInfo, setInviterInfo] = useState<{ firstName: string; lastName: string; fullName: string } | null>(null);
@@ -27,6 +48,7 @@ export function RegisterForm() {
     lastName: '',
     email: '',
     phone: '',
+    country: '',
     password: '',
     confirmPassword: '',
   });
@@ -39,7 +61,7 @@ export function RegisterForm() {
   // Function to fetch inviter information
   const fetchInviterInfo = async (refCode: string) => {
     if (!refCode) return;
-    
+
     try {
       setLoadingInviter(true);
       const response = await apiClient.getInviterInfo(refCode);
@@ -56,20 +78,20 @@ export function RegisterForm() {
   // Function to extract referral code from URL or code
   const extractReferralCode = (input: string): string => {
     if (!input.trim()) return '';
-    
+
     // Check if it's a URL with ref parameter
     if (input.includes('/join?ref=')) {
       const url = new URL(input);
       const refCode = url.searchParams.get('ref');
       return refCode || '';
     }
-    
+
     // Check if it's a URL with ref parameter in different format
     if (input.includes('ref=')) {
       const match = input.match(/ref=([^&]+)/);
       return match ? match[1] : '';
     }
-    
+
     // Otherwise, treat as direct referral code
     return input.trim();
   };
@@ -87,15 +109,15 @@ export function RegisterForm() {
     try {
       // Extract referral code from URL or use directly
       const referralCode = extractReferralCode(code);
-      
+
       if (!referralCode) {
         setReferralValidationError('Invalid referral format');
         return false;
       }
-      
+
       const response = await apiClient.getInviterInfo(referralCode);
       const data = response.data || response;
-      
+
       if (data) {
         // Valid referral code, update the stored referral code
         setReferralCode(referralCode);
@@ -118,7 +140,7 @@ export function RegisterForm() {
   const handleManualReferralChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setManualReferralCode(value);
-    
+
     // Clear validation error when user starts typing
     if (referralValidationError) {
       setReferralValidationError('');
@@ -179,6 +201,9 @@ export function RegisterForm() {
     } else if (!/^[\+]?[0-9]{10,15}$/.test(formData.phone.replace(/[^0-9+]/g, ''))) {
       newErrors.phone = 'Please enter a valid phone number';
     }
+    if (!formData.country) {
+      newErrors.country = 'Country is required';
+    }
     if (!formData.password) {
       newErrors.password = 'Password is required';
     } else if (formData.password.length < 8) {
@@ -188,7 +213,10 @@ export function RegisterForm() {
       newErrors.confirmPassword = 'Passwords do not match';
     }
     if (!agreeToTerms) {
-      newErrors.terms = 'You must agree to the terms';
+      newErrors.terms = 'You must accept the Terms of Service';
+    }
+    if (!agreeToPrivacy) {
+      newErrors.privacy = 'You must accept the Privacy Policy';
     }
 
     // Validate manual referral code if provided
@@ -218,29 +246,26 @@ export function RegisterForm() {
     try {
       // Get referral code (from URL, manual input, or localStorage)
       const finalRefCode = referralCode || localStorage.getItem('refCode') || undefined;
-      
+
       // Call real registration API with referral code if available
-      await apiClient.register(
-        formData.firstName,
-        formData.lastName,
-        formData.email,
-        formData.phone,
-        formData.password,
-        finalRefCode
-      );
-      
-      // Show success message if referral was applied
-      if (finalRefCode) {
-        // You could add a success notification here
-        console.log('You have successfully joined under a referral');
-      }
-      
+      await apiClient.register({
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        email: formData.email,
+        phone: formData.phone,
+        country: formData.country,
+        password: formData.password,
+        termsAccepted: agreeToTerms,
+        privacyAccepted: agreeToPrivacy,
+        refCode: finalRefCode,
+      });
+
       // Clear referral code after successful registration
       localStorage.removeItem('refCode');
-      
+
       // After successful registration, log the user in
       await login(formData.email, formData.password);
-      
+
     } catch (err: any) {
       setError(err.message || 'Registration failed. Please try again.');
     } finally {
@@ -248,7 +273,7 @@ export function RegisterForm() {
     }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
     // Clear error for this field
@@ -266,21 +291,22 @@ export function RegisterForm() {
         isOpen={showReferralBanner && !!inviterInfo}
         onClose={handleAlertClose}
         title="Special Invitation!"
-        message="You've been invited to join MatchTrading"
+        message="You've been invited to join EIDOS"
         referralCode={referralCode}
         inviterName={inviterInfo?.fullName}
       />
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-5">
       {error && (
-        <div className="rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-3 text-sm text-red-700 dark:text-red-400">
+        <div className="flex items-center gap-3 rounded-xl border border-destructive/20 bg-destructive/10 p-4 text-sm font-medium text-destructive">
+          <AlertCircle className="h-5 w-5 shrink-0" />
           {error}
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
         {/* First Name */}
-        <div className="space-y-1.5">
+        <div className="space-y-2">
           <label htmlFor="firstName" className="block text-sm font-medium text-foreground">
             First Name
           </label>
@@ -292,19 +318,15 @@ export function RegisterForm() {
             value={formData.firstName}
             onChange={handleChange}
             disabled={isLoading}
-            className={`w-full rounded-lg border px-4 py-2.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all disabled:opacity-50 ${
-              errors.firstName
-                ? 'border-red-500 focus:border-red-500'
-                : 'border-input bg-background focus:border-primary'
-            }`}
+            className={`${baseFieldClasses} ${fieldStateClasses(!!errors.firstName)}`}
           />
           {errors.firstName && (
-            <p className="text-xs text-red-600 dark:text-red-400">{errors.firstName}</p>
+            <p className="text-xs text-destructive">{errors.firstName}</p>
           )}
         </div>
 
         {/* Last Name */}
-        <div className="space-y-1.5">
+        <div className="space-y-2">
           <label htmlFor="lastName" className="block text-sm font-medium text-foreground">
             Last Name
           </label>
@@ -316,20 +338,16 @@ export function RegisterForm() {
             value={formData.lastName}
             onChange={handleChange}
             disabled={isLoading}
-            className={`w-full rounded-lg border px-4 py-2.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all disabled:opacity-50 ${
-              errors.lastName
-                ? 'border-red-500 focus:border-red-500'
-                : 'border-input bg-background focus:border-primary'
-            }`}
+            className={`${baseFieldClasses} ${fieldStateClasses(!!errors.lastName)}`}
           />
           {errors.lastName && (
-            <p className="text-xs text-red-600 dark:text-red-400">{errors.lastName}</p>
+            <p className="text-xs text-destructive">{errors.lastName}</p>
           )}
         </div>
       </div>
 
       {/* Email Address */}
-      <div className="space-y-1.5">
+      <div className="space-y-2">
         <label htmlFor="email" className="block text-sm font-medium text-foreground">
           Email Address
         </label>
@@ -341,45 +359,64 @@ export function RegisterForm() {
           value={formData.email}
           onChange={handleChange}
           disabled={isLoading}
-          className={`w-full rounded-lg border px-4 py-2.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all disabled:opacity-50 ${
-            errors.email
-              ? 'border-red-500 focus:border-red-500'
-              : 'border-input bg-background focus:border-primary'
-            }`}
+          className={`${baseFieldClasses} ${fieldStateClasses(!!errors.email)}`}
         />
         {errors.email && (
-          <p className="text-xs text-red-600 dark:text-red-400">{errors.email}</p>
+          <p className="text-xs text-destructive">{errors.email}</p>
         )}
       </div>
 
-      {/* Phone Number */}
-      <div className="space-y-1.5">
-        <label htmlFor="phone" className="block text-sm font-medium text-foreground">
-          Phone Number
-        </label>
-        <input
-          id="phone"
-          name="phone"
-          type="tel"
-          placeholder="+1 (555) 123-4567"
-          value={formData.phone}
-          onChange={handleChange}
-          disabled={isLoading}
-          className={`w-full rounded-lg border px-4 py-2.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all disabled:opacity-50 ${
-            errors.phone
-              ? 'border-red-500 focus:border-red-500'
-              : 'border-input bg-background focus:border-primary'
-          }`}
-        />
-        {errors.phone && (
-          <p className="text-xs text-red-600 dark:text-red-400">{errors.phone}</p>
-        )}
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+        {/* Phone Number */}
+        <div className="space-y-2">
+          <label htmlFor="phone" className="block text-sm font-medium text-foreground">
+            Phone Number
+          </label>
+          <input
+            id="phone"
+            name="phone"
+            type="tel"
+            placeholder="+1 (555) 123-4567"
+            value={formData.phone}
+            onChange={handleChange}
+            disabled={isLoading}
+            className={`${baseFieldClasses} ${fieldStateClasses(!!errors.phone)}`}
+          />
+          {errors.phone && (
+            <p className="text-xs text-destructive">{errors.phone}</p>
+          )}
+        </div>
+
+        {/* Country */}
+        <div className="space-y-2">
+          <label htmlFor="country" className="block text-sm font-medium text-foreground">
+            Country
+          </label>
+          <select
+            id="country"
+            name="country"
+            value={formData.country}
+            onChange={handleChange}
+            disabled={isLoading}
+            className={`${baseFieldClasses} ${fieldStateClasses(!!errors.country)}`}
+          >
+            <option value="">Select your country</option>
+            {COUNTRIES.map(country => (
+              <option key={country} value={country}>
+                {country}
+              </option>
+            ))}
+          </select>
+          {errors.country && (
+            <p className="text-xs text-destructive">{errors.country}</p>
+          )}
+        </div>
       </div>
 
       {/* Referral Code / Link */}
-      <div className="space-y-1.5">
+      <div className="space-y-2">
         <label htmlFor="referralCode" className="block text-sm font-medium text-foreground">
-          Referral Code / Referral Link <span className="text-muted-foreground">(Optional)</span>
+          Referral Code / Referral Link <span className="font-normal text-muted-foreground">(Optional)</span>
         </label>
         <input
           id="referralCode"
@@ -390,14 +427,10 @@ export function RegisterForm() {
           onChange={handleManualReferralChange}
           onBlur={handleReferralBlur}
           disabled={isLoading || isValidatingReferral}
-          className={`w-full rounded-lg border px-4 py-2.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all disabled:opacity-50 ${
-            referralValidationError || errors.referral
-              ? 'border-red-500 focus:border-red-500'
-              : 'border-input bg-background focus:border-primary'
-          }`}
+          className={`${baseFieldClasses} ${fieldStateClasses(!!(referralValidationError || errors.referral))}`}
         />
         {(referralValidationError || errors.referral) && (
-          <p className="text-xs text-red-600 dark:text-red-400">
+          <p className="text-xs text-destructive">
             {referralValidationError || errors.referral}
           </p>
         )}
@@ -405,132 +438,146 @@ export function RegisterForm() {
           <p className="text-xs text-muted-foreground">Validating referral code...</p>
         )}
         {inviterInfo && !showReferralBanner && (
-          <p className="text-xs text-green-600 dark:text-green-400">
+          <p className="text-xs font-medium text-success">
             You're joining under {inviterInfo.fullName}
           </p>
         )}
       </div>
 
-      {/* Password */}
-      <div className="space-y-1.5">
-        <label htmlFor="password" className="block text-sm font-medium text-foreground">
-          Password
-        </label>
-        <div className="relative">
-          <input
-            id="password"
-            name="password"
-            type={showPassword ? 'text' : 'password'}
-            placeholder="••••••••"
-            value={formData.password}
-            onChange={handleChange}
-            disabled={isLoading}
-            className={`w-full rounded-lg border px-4 py-2.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all disabled:opacity-50 ${
-              errors.password
-                ? 'border-red-500 focus:border-red-500'
-                : 'border-input bg-background focus:border-primary'
-            }`}
-          />
-          <button
-            type="button"
-            onClick={() => setShowPassword(!showPassword)}
-            className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground transition-colors"
-            aria-label="Toggle password visibility"
-          >
-            {showPassword ? (
-              <EyeOff className="h-5 w-5" />
-            ) : (
-              <Eye className="h-5 w-5" />
-            )}
-          </button>
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+        {/* Password */}
+        <div className="space-y-2">
+          <label htmlFor="password" className="block text-sm font-medium text-foreground">
+            Password
+          </label>
+          <div className="relative">
+            <input
+              id="password"
+              name="password"
+              type={showPassword ? 'text' : 'password'}
+              placeholder="••••••••"
+              value={formData.password}
+              onChange={handleChange}
+              disabled={isLoading}
+              className={`${baseFieldClasses} pr-11 ${fieldStateClasses(!!errors.password)}`}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+              aria-label="Toggle password visibility"
+            >
+              {showPassword ? (
+                <EyeOff className="h-[18px] w-[18px]" />
+              ) : (
+                <Eye className="h-[18px] w-[18px]" />
+              )}
+            </button>
+          </div>
+          {errors.password && (
+            <p className="text-xs text-destructive">{errors.password}</p>
+          )}
         </div>
-        {errors.password && (
-          <p className="text-xs text-red-600 dark:text-red-400">{errors.password}</p>
-        )}
+
+        {/* Confirm Password */}
+        <div className="space-y-2">
+          <label htmlFor="confirmPassword" className="block text-sm font-medium text-foreground">
+            Confirm Password
+          </label>
+          <div className="relative">
+            <input
+              id="confirmPassword"
+              name="confirmPassword"
+              type={showConfirmPassword ? 'text' : 'password'}
+              placeholder="••••••••"
+              value={formData.confirmPassword}
+              onChange={handleChange}
+              disabled={isLoading}
+              className={`${baseFieldClasses} pr-11 ${fieldStateClasses(!!errors.confirmPassword)}`}
+            />
+            <button
+              type="button"
+              onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+              aria-label="Toggle password visibility"
+            >
+              {showConfirmPassword ? (
+                <EyeOff className="h-[18px] w-[18px]" />
+              ) : (
+                <Eye className="h-[18px] w-[18px]" />
+              )}
+            </button>
+          </div>
+          {errors.confirmPassword && (
+            <p className="text-xs text-destructive">{errors.confirmPassword}</p>
+          )}
+        </div>
       </div>
 
-      {/* Confirm Password */}
-      <div className="space-y-1.5">
-        <label htmlFor="confirmPassword" className="block text-sm font-medium text-foreground">
-          Confirm Password
-        </label>
-        <div className="relative">
+      <div className="space-y-3 rounded-xl border border-border/80 bg-muted/40 p-4">
+        <div className="flex items-start">
           <input
-            id="confirmPassword"
-            name="confirmPassword"
-            type={showConfirmPassword ? 'text' : 'password'}
-            placeholder="••••••••"
-            value={formData.confirmPassword}
-            onChange={handleChange}
+            id="terms"
+            type="checkbox"
+            checked={agreeToTerms}
+            onChange={(e) => {
+              setAgreeToTerms(e.target.checked);
+              setErrors(prev => ({ ...prev, terms: '' }));
+            }}
             disabled={isLoading}
-            className={`w-full rounded-lg border px-4 py-2.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all disabled:opacity-50 ${
-              errors.confirmPassword
-                ? 'border-red-500 focus:border-red-500'
-                : 'border-input bg-background focus:border-primary'
-            }`}
+            className="mt-1 h-4 w-4 cursor-pointer rounded border-input bg-background text-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-50"
           />
-          <button
-            type="button"
-            onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-            className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground transition-colors"
-            aria-label="Toggle password visibility"
-          >
-            {showConfirmPassword ? (
-              <EyeOff className="h-5 w-5" />
-            ) : (
-              <Eye className="h-5 w-5" />
-            )}
-          </button>
+          <label htmlFor="terms" className="ml-2.5 cursor-pointer text-sm text-muted-foreground">
+            I accept the{' '}
+            <Link href="/terms" className="font-medium text-primary hover:underline">
+              Terms of Service
+            </Link>
+          </label>
         </div>
-        {errors.confirmPassword && (
-          <p className="text-xs text-red-600 dark:text-red-400">{errors.confirmPassword}</p>
+        {errors.terms && (
+          <p className="text-xs text-destructive">{errors.terms}</p>
+        )}
+        <div className="flex items-start">
+          <input
+            id="privacy"
+            type="checkbox"
+            checked={agreeToPrivacy}
+            onChange={(e) => {
+              setAgreeToPrivacy(e.target.checked);
+              setErrors(prev => ({ ...prev, privacy: '' }));
+            }}
+            disabled={isLoading}
+            className="mt-1 h-4 w-4 cursor-pointer rounded border-input bg-background text-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-50"
+          />
+          <label htmlFor="privacy" className="ml-2.5 cursor-pointer text-sm text-muted-foreground">
+            I accept the{' '}
+            <Link href="/privacy" className="font-medium text-primary hover:underline">
+              Privacy Policy
+            </Link>
+          </label>
+        </div>
+        {errors.privacy && (
+          <p className="text-xs text-destructive">{errors.privacy}</p>
         )}
       </div>
-
-      <div className="flex items-start">
-        <input
-          id="terms"
-          type="checkbox"
-          checked={agreeToTerms}
-          onChange={(e) => {
-            setAgreeToTerms(e.target.checked);
-            setErrors(prev => ({ ...prev, terms: '' }));
-          }}
-          disabled={isLoading}
-          className="mt-1 h-4 w-4 rounded border-input bg-background text-primary focus:ring-2 focus:ring-primary/20 cursor-pointer disabled:opacity-50"
-        />
-        <label htmlFor="terms" className="ml-2 text-sm text-muted-foreground cursor-pointer">
-          I agree to the{' '}
-          <Link href="#" className="text-primary hover:underline">
-            Terms of Service
-          </Link>
-          {' '}and{' '}
-          <Link href="#" className="text-primary hover:underline">
-            Privacy Policy
-          </Link>
-        </label>
-      </div>
-      {errors.terms && (
-        <p className="text-xs text-red-600 dark:text-red-400">{errors.terms}</p>
-      )}
 
       <button
         type="submit"
         disabled={isLoading}
-        className="w-full rounded-lg bg-primary px-4 py-2.5 font-medium text-primary-foreground transition-all hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+        className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/25 transition-all hover:bg-primary/90 hover:shadow-primary/30 disabled:cursor-not-allowed disabled:opacity-50"
       >
         {isLoading && (
-          <div className="h-4 w-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin" />
+          <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
         )}
         {isLoading ? 'Creating Account...' : 'Create Account'}
       </button>
 
       <div className="relative">
         <div className="absolute inset-0 flex items-center">
-          <div className="w-full border-t border-border" />
+          <div className="w-full border-t border-border/80" />
         </div>
         <div className="relative flex justify-center text-sm">
-          <span className="bg-card px-2 text-muted-foreground">
+          <span className="bg-card px-3 text-muted-foreground">
             Already have an account?
           </span>
         </div>
@@ -538,7 +585,7 @@ export function RegisterForm() {
 
       <Link
         href="/login"
-        className="block w-full rounded-lg border border-input bg-background px-4 py-2.5 text-center font-medium text-foreground transition-all hover:bg-muted disabled:opacity-50"
+        className="flex h-11 w-full items-center justify-center rounded-xl border border-border bg-background px-4 text-sm font-medium text-foreground transition-colors hover:bg-muted"
       >
         Sign In
       </Link>

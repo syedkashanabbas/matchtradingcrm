@@ -1,6 +1,7 @@
 'use client';
 
 import { ReactNode } from 'react';
+import { Moon, Sun } from 'lucide-react';
 import { useDarkMode } from '@/lib/hooks';
 
 interface AuthLayoutProps {
@@ -13,47 +14,47 @@ export function AuthLayout({ children, title, description }: AuthLayoutProps) {
   const { isDark, toggle } = useDarkMode();
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted flex items-center justify-center px-4 py-12">
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-4 py-12">
+      {/* Decorative brand glow */}
+      <div aria-hidden className="pointer-events-none absolute -top-48 left-1/2 h-[26rem] w-[46rem] -translate-x-1/2 rounded-full bg-brand-gradient opacity-10 blur-3xl" />
+      <div aria-hidden className="pointer-events-none absolute -bottom-52 -right-28 h-80 w-80 rounded-full bg-brand-gradient opacity-[0.07] blur-3xl" />
+
       {/* Theme Toggle */}
       <button
         onClick={toggle}
-        className="fixed top-6 right-6 rounded-lg border border-border bg-card p-2.5 hover:bg-muted transition-colors"
+        className="fixed right-6 top-6 rounded-xl border border-border/80 bg-card p-2.5 text-muted-foreground elevation-1 transition-colors hover:bg-muted hover:text-foreground"
         aria-label="Toggle theme"
       >
         {isDark ? (
-          <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-            <path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.536a1 1 0 10-1.414 1.414l.707.707a1 1 0 001.414-1.414l-.707-.707zm2.121-10.364a1 1 0 10-1.414 1.414l.707.707a1 1 0 001.414-1.414l-.707-.707zm-10.606 0a1 1 0 10-1.414-1.414l-.707.707a1 1 0 001.414 1.414l.707-.707zm10.606 10.364a1 1 0 10-1.414-1.414l-.707.707a1 1 0 001.414 1.414l.707-.707zM3 11a1 1 0 110-2H2a1 1 0 011 1v1zm18 0a1 1 0 110-2h1a1 1 0 011 1v1z" />
-          </svg>
+          <Sun className="h-[18px] w-[18px]" />
         ) : (
-          <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-            <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" />
-          </svg>
+          <Moon className="h-[18px] w-[18px]" />
         )}
       </button>
 
       {/* Auth Form Container */}
       <div className="w-full max-w-md">
         {/* Logo & Header */}
-        <div className="mb-8 text-center">
-          <div className="mb-4 flex justify-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-gradient-to-br from-purple-500 to-blue-600">
-              <span className="text-lg font-bold text-white">MT</span>
+        <div className="mb-8 text-center animate-fade-in-up">
+          <div className="mb-5 flex justify-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-gradient shadow-lg shadow-primary/25">
+              <span className="font-display text-xl font-bold text-white">E</span>
             </div>
           </div>
-          <h1 className="mb-2 text-3xl font-bold text-foreground">{title}</h1>
+          <h1 className="mb-2 font-display text-3xl font-bold tracking-tight text-foreground">{title}</h1>
           {description && (
             <p className="text-muted-foreground">{description}</p>
           )}
         </div>
 
         {/* Form */}
-        <div className="rounded-2xl border border-border bg-card p-8 shadow-soft-lg">
+        <div className="relative rounded-2xl border border-border/80 bg-card/95 p-8 backdrop-blur-sm elevation-1 animate-fade-in-up stagger-1">
           {children}
         </div>
 
         {/* Footer */}
-        <p className="mt-6 text-center text-sm text-muted-foreground">
-          Part of the MatchTrading ecosystem
+        <p className="mt-6 text-center text-sm text-muted-foreground animate-fade-in-up stagger-2">
+          Part of the EIDOS ecosystem
         </p>
       </div>
     </div>

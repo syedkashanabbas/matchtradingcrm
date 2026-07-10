@@ -2,6 +2,7 @@
 
 import { Bell, Moon, Sun, Menu } from 'lucide-react';
 import { useState } from 'react';
+import { usePathname } from 'next/navigation';
 import { useDarkMode, useNotifications, useLogout } from '@/lib/hooks';
 import { useAuthContext } from '@/lib/auth-context';
 import { UserAvatar } from '@/components/shared/UserAvatar';
@@ -12,7 +13,28 @@ interface NavbarProps {
   isAdmin?: boolean;
 }
 
+const TITLES: Array<[string, string]> = [
+  ['/dashboard/client/onboarding', 'Onboarding'],
+  ['/dashboard/client/network', 'Network'],
+  ['/dashboard/client/commissions', 'Commissions'],
+  ['/dashboard/client/notifications', 'Notifications'],
+  ['/dashboard/client/profile', 'Profile'],
+  ['/dashboard/settings', 'Settings'],
+  ['/dashboard/admin/users', 'Users'],
+  ['/dashboard/admin/subscriptions', 'Subscriptions'],
+  ['/dashboard/admin/brokers', 'Brokers'],
+  ['/dashboard/admin/prop-firms', 'Prop Firms'],
+  ['/dashboard/admin/network', 'Network'],
+  ['/dashboard/admin/commissions', 'Commissions'],
+  ['/dashboard/admin/programs', 'Programs'],
+  ['/dashboard/admin/profile', 'Profile'],
+  ['/dashboard/admin', 'Admin'],
+  ['/dashboard/client', 'Dashboard'],
+];
+
 export function Navbar({ onMenuClick, isAdmin = false }: NavbarProps) {
+  const pathname = usePathname();
+  const pageTitle = TITLES.find(([prefix]) => pathname.startsWith(prefix))?.[1] ?? 'Dashboard';
   const { isDark, toggle } = useDarkMode();
   const { unreadCount, notifications } = useNotifications();
   const { user } = useAuthContext();
@@ -22,17 +44,17 @@ export function Navbar({ onMenuClick, isAdmin = false }: NavbarProps) {
 
   return (
     <>
-      <nav className="fixed top-0 right-0 left-0  z-30 border-b border-border bg-card/80 backdrop-blur-sm lg:left-306">
-        <div className="flex h-16 items-center justify-between px-6">
-          <div className="flex items-center gap-4 lg:hidden">
+      <nav className="fixed top-0 right-0 left-0 z-30 border-b border-border/70 bg-background/75 backdrop-blur-xl lg:left-64">
+        <div className="flex h-16 items-center justify-between px-4 sm:px-6">
+          <div className="flex items-center gap-3">
             <button
               onClick={onMenuClick}
-              className="rounded-lg p-2 hover:bg-muted transition-colors"
+              className="rounded-lg p-2 hover:bg-muted transition-colors lg:hidden"
               aria-label="Toggle menu"
             >
               <Menu className="h-5 w-5" />
             </button>
-            <h1 className="font-semibold">Dashboard</h1>
+            <h1 className="font-display text-lg font-semibold tracking-tight">{pageTitle}</h1>
           </div>
 
           <div className="flex items-center gap-4">

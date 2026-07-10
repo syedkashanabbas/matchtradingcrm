@@ -6,13 +6,14 @@ import { ProfileForm } from '@/components/forms/ProfileForm';
 import { UserAvatar } from '@/components/shared/UserAvatar';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { CircleUser, SquarePen, Info } from 'lucide-react';
 
 export default function ProfilePage() {
   const { user, isLoading } = useAuthContext();
 
   if (isLoading || !user) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-8">
         <LoadingSkeleton variant="card" />
         <LoadingSkeleton variant="card" count={2} />
       </div>
@@ -20,38 +21,44 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-foreground">Profile Settings</h1>
-        <p className="text-muted-foreground mt-2">
-          Manage your account information and preferences
+      <div className="animate-fade-in-up">
+        <p className="eyebrow">Account</p>
+        <h1 className="page-title">Profile Settings</h1>
+        <p className="page-subtitle">
+          Keep your details current so we can reach you when it matters.
         </p>
       </div>
 
       {/* Profile Overview Card */}
-      <Card>
+      <Card className="animate-fade-in-up stagger-1">
         <CardHeader>
-          <CardTitle>Account Overview</CardTitle>
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <CircleUser className="h-[18px] w-[18px]" />
+            </div>
+            <CardTitle className="font-display text-lg">Account Overview</CardTitle>
+          </div>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-col sm:flex-row sm:items-center gap-6">
-            <UserAvatar user={user} size="lg" />
+          <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
+            <UserAvatar name={user.name} src={user.avatar} size="lg" />
             <div className="flex-1">
-              <h2 className="text-2xl font-bold text-foreground">
+              <h2 className="font-display text-2xl font-semibold tracking-tight text-foreground">
                 {user.firstName} {user.lastName}
               </h2>
-              <p className="text-muted-foreground mt-1">{user.email}</p>
+              <p className="mt-1 text-muted-foreground">{user.email}</p>
               {user.phone && (
-                <p className="text-muted-foreground mt-1">{user.phone}</p>
+                <p className="mt-1 text-muted-foreground tabular-nums">{user.phone}</p>
               )}
-              <div className="flex items-center gap-3 mt-4">
+              <div className="mt-4 flex items-center gap-2">
                 <StatusBadge status={user.status} />
-                <span className="text-sm text-muted-foreground">
+                <span className="inline-flex items-center rounded-full border border-primary/20 bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
                   {user.tier} Plan
                 </span>
               </div>
-              <p className="text-xs text-muted-foreground mt-3">
+              <p className="mt-3 text-xs text-muted-foreground">
                 Member since {new Date(user.joinDate).toLocaleDateString('en-US', {
                   year: 'numeric',
                   month: 'long',
@@ -64,9 +71,14 @@ export default function ProfilePage() {
       </Card>
 
       {/* Profile Form */}
-      <Card>
+      <Card className="animate-fade-in-up stagger-2">
         <CardHeader>
-          <CardTitle>Edit Profile</CardTitle>
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <SquarePen className="h-[18px] w-[18px]" />
+            </div>
+            <CardTitle className="font-display text-lg">Edit Profile</CardTitle>
+          </div>
         </CardHeader>
         <CardContent>
           <ProfileForm user={user} />
@@ -74,23 +86,28 @@ export default function ProfilePage() {
       </Card>
 
       {/* Account Info */}
-      <Card>
+      <Card className="animate-fade-in-up stagger-3">
         <CardHeader>
-          <CardTitle>Account Information</CardTitle>
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <Info className="h-[18px] w-[18px]" />
+            </div>
+            <CardTitle className="font-display text-lg">Account Information</CardTitle>
+          </div>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
             <div>
-              <label className="text-sm font-medium text-muted-foreground">Account ID</label>
-              <p className="text-foreground font-mono text-sm mt-1">{user.accountId || user.id}</p>
+              <p className="text-sm font-medium text-muted-foreground">Account ID</p>
+              <p className="mt-1 font-mono text-sm text-foreground">{user.accountId || user.id}</p>
             </div>
             <div>
-              <label className="text-sm font-medium text-muted-foreground">Status</label>
-              <p className="text-foreground mt-1 capitalize">{user.status}</p>
+              <p className="text-sm font-medium text-muted-foreground">Status</p>
+              <p className="mt-1 capitalize text-foreground">{user.status}</p>
             </div>
             <div>
-              <label className="text-sm font-medium text-muted-foreground">Created Date</label>
-              <p className="text-foreground mt-1">
+              <p className="text-sm font-medium text-muted-foreground">Created Date</p>
+              <p className="mt-1 text-foreground">
                 {new Date(user.joinDate).toLocaleDateString('en-US', {
                   year: 'numeric',
                   month: 'long',

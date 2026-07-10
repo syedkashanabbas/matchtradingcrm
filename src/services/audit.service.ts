@@ -296,28 +296,6 @@ export const auditUserRegistration = (userId: string, ipAddress: string, userAge
   });
 };
 
-export const auditApiKeyCreated = (userId: string, apiKeyId: string, ipAddress: string) => {
-  return createAuditEvent({
-    userId,
-    action: "API_KEY_CREATED",
-    resource: "API_KEY",
-    details: { apiKeyId },
-    ipAddress,
-    severity: AuditSeverity.MEDIUM,
-  });
-};
-
-export const auditApiKeyDeleted = (userId: string, apiKeyId: string, ipAddress: string) => {
-  return createAuditEvent({
-    userId,
-    action: "API_KEY_DELETED",
-    resource: "API_KEY",
-    details: { apiKeyId },
-    ipAddress,
-    severity: AuditSeverity.HIGH,
-  });
-};
-
 export const auditUserStatusChanged = (
   userId: string,
   oldStatus: string,
@@ -355,22 +333,19 @@ export const auditPaymentFailed = (userId: string, subscriptionId: string, amoun
   });
 };
 
-export const auditEAValidationSuccess = (userId: string, fingerprint: string, deviceInfo: any) => {
+export const auditCredentialViewed = (
+  adminUserId: string,
+  targetUserId: string,
+  accountType: "broker" | "prop",
+  accountId: string,
+  ipAddress?: string
+) => {
   return createAuditEvent({
-    userId,
-    action: "EA_VALIDATION_SUCCESS",
-    resource: "EA",
-    details: { fingerprint, deviceInfo },
-    severity: AuditSeverity.LOW,
-  });
-};
-
-export const auditEAValidationFailed = (userId: string, fingerprint: string, error: string) => {
-  return createAuditEvent({
-    userId,
-    action: "EA_VALIDATION_FAILED",
-    resource: "EA",
-    details: { fingerprint, error },
-    severity: AuditSeverity.MEDIUM,
+    userId: adminUserId,
+    action: "CREDENTIAL_VIEWED",
+    resource: "CREDENTIALS",
+    details: { targetUserId, accountType, accountId },
+    ipAddress,
+    severity: AuditSeverity.HIGH,
   });
 };

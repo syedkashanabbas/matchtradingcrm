@@ -6,15 +6,15 @@ import { apiClient } from '@/lib/api';
 interface StatusDropdownProps {
   currentStatus: string;
   itemId: string;
-  moduleType: 'vps' | 'broker' | 'propFirm';
+  moduleType: 'broker' | 'propFirm';
   onStatusUpdate?: (newStatus: string) => void;
 }
 
 const STATUS_OPTIONS = [
-  { value: 'REVIEW', label: 'REVIEW', color: 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400', badgeColor: '#f59e0b' },
-  { value: 'PENDING', label: 'PENDING', color: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400', badgeColor: '#3b82f6' },
-  { value: 'CERTIFIED', label: 'CERTIFIED', color: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400', badgeColor: '#10b981' },
-  { value: 'ACTIVE', label: 'ACTIVE', color: 'bg-green-500 dark:bg-green-600 text-white', badgeColor: '#22c55e' },
+  { value: 'review', label: 'Review' },
+  { value: 'active', label: 'Active' },
+  { value: 'failed', label: 'Failed' },
+  { value: 'archived', label: 'Archived' },
 ];
 
 export function StatusDropdown({ currentStatus, itemId, moduleType, onStatusUpdate }: StatusDropdownProps) {
@@ -25,14 +25,11 @@ export function StatusDropdown({ currentStatus, itemId, moduleType, onStatusUpda
     if (newStatus === status || isUpdating) return;
 
     setIsUpdating(true);
-    
+
     try {
       let response;
-      
+
       switch (moduleType) {
-        case 'vps':
-          response = await apiClient.updateVpsStatus(itemId, newStatus);
-          break;
         case 'broker':
           response = await apiClient.updateBrokerStatus(itemId, newStatus);
           break;
@@ -46,7 +43,7 @@ export function StatusDropdown({ currentStatus, itemId, moduleType, onStatusUpda
       if (response) {
         setStatus(newStatus);
         onStatusUpdate?.(newStatus);
-        
+
         // Show success message (you can implement toast notifications here)
         console.log(`${moduleType} status updated to ${newStatus}`);
       }
@@ -60,40 +57,27 @@ export function StatusDropdown({ currentStatus, itemId, moduleType, onStatusUpda
     }
   };
 
-  const currentStatusOption = STATUS_OPTIONS.find(option => option.value === status) || STATUS_OPTIONS[0];
-
   return (
-    <div className="relative">
+    <div className="relative inline-flex">
       <select
         value={status}
         onChange={(e) => handleStatusChange(e.target.value)}
         disabled={isUpdating}
-        className={`inline-flex rounded-full px-3 py-1 text-xs font-medium border-0 cursor-pointer focus:ring-2 focus:ring-offset-2 focus:ring-offset-background focus:ring-primary transition-all ${
-          currentStatusOption.color
-        } ${isUpdating ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-80'}`}
-        style={{ 
-          backgroundColor: currentStatusOption.badgeColor,
-          color: status === 'ACTIVE' ? 'white' : 'inherit'
-        }}
+        aria-label={`Update ${moduleType === 'broker' ? 'broker' : 'prop firm'} status`}
+        className={`h-8 rounded-lg border border-input bg-background px-2 text-xs font-medium text-foreground transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 ${
+          isUpdating ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:bg-muted/50'
+        }`}
       >
         {STATUS_OPTIONS.map((option) => (
-          <option 
-            key={option.value} 
-            value={option.value} 
-            className="bg-background text-foreground"
-            style={{ 
-              backgroundColor: option.badgeColor,
-              color: option.value === 'ACTIVE' ? 'white' : 'inherit'
-            }}
-          >
+          <option key={option.value} value={option.value} className="bg-background text-foreground">
             {option.label}
           </option>
         ))}
       </select>
-      
+
       {isUpdating && (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-current"></div>
+        <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-background/60">
+          <div className="h-3 w-3 animate-spin rounded-full border-b-2 border-current"></div>
         </div>
       )}
     </div>

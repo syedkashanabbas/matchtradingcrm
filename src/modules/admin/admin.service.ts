@@ -60,27 +60,6 @@ export const getAdminDashboard = async () => {
     },
   });
 
-  // Get VPS stats
-  const totalVpsConfigs = await prisma.vpsConfig.count({
-    where: {
-      user: {
-        role: {
-          not: 'ADMIN'
-        }
-      }
-    }
-  });
-  const activeVpsConfigs = await prisma.vpsConfig.count({
-    where: { 
-      status: "active",
-      user: {
-        role: {
-          not: 'ADMIN'
-        }
-      }
-    },
-  });
-
   // Get broker stats
   const totalBrokerAccounts = await prisma.brokerAccount.count({
     where: {
@@ -130,8 +109,6 @@ export const getAdminDashboard = async () => {
     suspendedUsers,
     totalSubscriptions,
     activeSubscriptions,
-    totalVpsConfigs,
-    activeVpsConfigs,
     totalBrokerAccounts,
     activeBrokerAccounts,
     totalPropAccounts,
@@ -143,21 +120,123 @@ export const getAdminDashboard = async () => {
  * Get all users
  */
 export const getAllUsers = async () => {
-  return prisma.user.findMany({
-    where: {
-      role: {
-        not: 'ADMIN'
-      }
-    },
+  const [users, provisions] = await Promise.all([
+    prisma.user.findMany({
+      where: {
+        role: {
+          not: 'ADMIN'
+        }
+      },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        role: true,
+        status: true,
+        createdAt: true,
+        onboardingProgress: true,
+      },
+    }),
+    prisma.easierPropProvision.findMany({
+      select: { userId: true, status: true },
+    }),
+  ]);
+
+  const provisionByUser = new Map(provisions.map(p => [p.userId, p.status]));
+
+  return users.map(user => ({
+    ...user,
+    provisioningStatus: provisionByUser.get(user.id) ?? "NOT_STARTED",
+  }));
+};
+
+/**
+ * Full user detail for the admin client page: profile, subscription,
+ * accounts (credentials masked - reveal is a separate audited endpoint),
+ * provisioning and hedge state.
+ */
+export const getUserDetail = async (userId: string) => {
+  const [user, subscription, brokerAccounts, propAccounts, provision, hedge] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        phone: true,
+        country: true,
+        role: true,
+        status: true,
+        onboardingProgress: true,
+        referralCode: true,
+        referredByUserId: true,
+        createdAt: true,
+      },
+    }),
+    prisma.subscription.findFirst({ where: { userId }, orderBy: { createdAt: "desc" } }),
+    prisma.brokerAccount.findMany({
+      where: { userId },
+      select: {
+        id: true,
+        brokerName: true,
+        mt5AccountNumber: true,
+        mt5Server: true,
+        status: true,
+        archivedAt: true,
+        epAccountId: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.propAccount.findMany({
+      where: { userId },
+      select: {
+        id: true,
+        firmName: true,
+        mt5AccountNumber: true,
+        mt5Server: true,
+        phase: true,
+        status: true,
+        isActive: true,
+        archivedAt: true,
+        epAccountId: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.easierPropProvision.findUnique({ where: { userId } }),
+    prisma.hedgeSetup.findFirst({ where: { userId }, orderBy: { createdAt: "desc" } }),
+  ]);
+
+  if (!user) {
+    throw new Error("User not found");
+  }
+
+  return { user, subscription, brokerAccounts, propAccounts, provision, hedge };
+};
+
+/**
+ * All subscriptions with user info (admin subscriptions page)
+ */
+export const getAllSubscriptions = async () => {
+  return prisma.subscription.findMany({
+    where: { user: { role: { not: "ADMIN" } } },
     orderBy: { createdAt: "desc" },
+    take: 500,
     select: {
       id: true,
-      email: true,
-      firstName: true,
-      lastName: true,
-      role: true,
+      provider: true,
+      plan: true,
       status: true,
+      currentPeriodStart: true,
+      currentPeriodEnd: true,
+      cancelAtPeriodEnd: true,
+      gracePeriodEnd: true,
       createdAt: true,
+      user: { select: { id: true, firstName: true, lastName: true, email: true } },
     },
   });
 };
@@ -173,35 +252,11 @@ export const updateUserStatus = async (userId: string, status: string) => {
 };
 
 /**
- * Get all VPS configurations (admin only)
- */
-export const getAllVpsConfigs = async () => {
-  return prisma.vpsConfig.findMany({
-    where: {
-      user: {
-        role: {
-          not: 'ADMIN'
-        }
-      }
-    },
-    include: {
-      user: {
-        select: {
-          id: true,
-          firstName: true,
-          lastName: true,
-          email: true,
-        },
-      },
-    },
-    orderBy: { createdAt: "desc" },
-  });
-};
-
-/**
  * Get all broker configurations (admin only)
  */
 export const getAllBrokerConfigs = async () => {
+  // Credential fields are intentionally excluded: admin viewing is on-demand
+  // via the audited reveal endpoint only (see admin credentials controller).
   return prisma.brokerAccount.findMany({
     where: {
       user: {
@@ -210,7 +265,15 @@ export const getAllBrokerConfigs = async () => {
         }
       }
     },
-    include: {
+    select: {
+      id: true,
+      userId: true,
+      brokerName: true,
+      mt5AccountNumber: true,
+      mt5Server: true,
+      status: true,
+      createdAt: true,
+      updatedAt: true,
       user: {
         select: {
           id: true,
@@ -228,6 +291,8 @@ export const getAllBrokerConfigs = async () => {
  * Get all Prop Firm configurations (admin only)
  */
 export const getAllPropConfigs = async () => {
+  // Credential fields are intentionally excluded: admin viewing is on-demand
+  // via the audited reveal endpoint only (see admin credentials controller).
   return prisma.propAccount.findMany({
     where: {
       user: {
@@ -236,7 +301,18 @@ export const getAllPropConfigs = async () => {
         }
       }
     },
-    include: {
+    select: {
+      id: true,
+      userId: true,
+      firmName: true,
+      mt5AccountNumber: true,
+      mt5Server: true,
+      phase: true,
+      status: true,
+      isActive: true,
+      archivedAt: true,
+      createdAt: true,
+      updatedAt: true,
       user: {
         select: {
           id: true,
@@ -247,16 +323,6 @@ export const getAllPropConfigs = async () => {
       },
     },
     orderBy: { createdAt: "desc" },
-  });
-};
-
-/**
- * Update VPS configuration status
- */
-export const updateVpsConfigStatus = async (vpsId: string, status: string) => {
-  return prisma.vpsConfig.update({
-    where: { id: vpsId },
-    data: { status: status as any },
   });
 };
 

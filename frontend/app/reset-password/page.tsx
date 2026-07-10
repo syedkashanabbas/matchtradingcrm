@@ -3,7 +3,7 @@ import { AuthLayout } from '@/components/auth/AuthLayout';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Reset Password - MatchTrading',
+  title: 'Reset Password - EIDOS',
   description: 'Set your new password',
 };
 

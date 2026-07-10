@@ -3,7 +3,7 @@ import { AuthLayout } from '@/components/auth/AuthLayout';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Verify OTP - MatchTrading',
+  title: 'Verify OTP - EIDOS',
   description: 'Verify your password reset code',
 };
 

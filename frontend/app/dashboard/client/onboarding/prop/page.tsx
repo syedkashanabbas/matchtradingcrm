@@ -2,295 +2,222 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ChevronLeft, ChevronRight, Building } from 'lucide-react';
+import { Check, AlertCircle, Building } from 'lucide-react';
 import { apiClient } from '@/lib/api';
 import { useAuthContext } from '@/lib/auth-context';
-import { FtmoAlert } from '@/components/ui/ftmo-alert';
-
-interface PropData {
-  prop_firm_name: string;
-  phase: string;
-  mt5_account_number: string;
-  mt5_password: string;
-  mt5_server: string;
-  prop_firm_password?: string;
-  ftmo_credit_detail?: string;
-  ftmo_account_detail?: string;
-  ftmo_user_name?: string;
-}
+import { OnboardingStepper, type WizardStepId } from '@/components/onboarding/OnboardingStepper';
 
 export default function ClientOnboardingPropPage() {
   const router = useRouter();
   const { user, isAuthenticated } = useAuthContext();
-  const [isLoading, setIsLoading] = useState(false);
-  const [showFtmoAlert, setShowFtmoAlert] = useState(false);
-  const [formData, setFormData] = useState<PropData>({
-    prop_firm_name: '',
-    phase: 'challenge',
-    mt5_account_number: '',
-    mt5_password: '',
-    mt5_server: '',
-    prop_firm_password: '',
-    ftmo_credit_detail: '',
-    ftmo_account_detail: '',
-    ftmo_user_name: '',
+  const [form, setForm] = useState({
+    firmName: '',
+    mt5AccountNumber: '',
+    mt5Password: '',
+    mt5Server: '',
+    phase: 'CHALLENGE' as 'CHALLENGE' | 'FUNDED',
   });
+  const [completedSteps, setCompletedSteps] = useState<WizardStepId[]>([]);
+  const [existing, setExisting] = useState<{ firmName: string; mt5AccountNumber: string } | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isAuthenticated) {
       router.push('/login');
       return;
     }
-
-    // Check if user is admin - admins should not access onboarding
     if (user?.role === 'ADMIN') {
       router.push('/dashboard/admin');
       return;
     }
 
-    // Check if user came from broker form by checking the referrer
-    const referrer = document.referrer;
-    if (referrer.includes('/broker') || sessionStorage.getItem('fromBroker') === 'true') {
-      setShowFtmoAlert(true);
-      sessionStorage.removeItem('fromBroker');
-    }
+    apiClient
+      .getOnboardingStatus()
+      .then(response => {
+        const status = response.data;
+        if (!status) return;
+        const done: WizardStepId[] = [];
+        if (status.steps.payment.status === 'COMPLETED') done.push('payment');
+        if (status.steps.broker.status === 'COMPLETED') done.push('broker');
+        if (status.steps.prop.status === 'COMPLETED') done.push('prop');
+        setCompletedSteps(done);
+        if (status.steps.prop.data) {
+          setExisting({
+            firmName: status.steps.prop.data.firmName,
+            mt5AccountNumber: status.steps.prop.data.mt5AccountNumber,
+          });
+        }
+      })
+      .catch(() => {});
   }, [isAuthenticated, user, router]);
 
-  const handleInputChange = (field: keyof PropData, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+  const handleChange = (field: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    setForm(prev => ({ ...prev, [field]: e.target.value }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
+    setError(null);
 
+    if (!form.firmName || !form.mt5AccountNumber || !form.mt5Password || !form.mt5Server) {
+      setError('Please fill in all required fields.');
+      return;
+    }
+
+    setIsLoading(true);
     try {
-      await apiClient.post('/v1/onboarding/prop', formData);
-      router.push('/dashboard/client/onboarding/payment');
-    } catch (error) {
-      console.error('Error saving prop firm configuration:', error);
-    } finally {
+      await apiClient.saveOnboardingProp({
+        firmName: form.firmName,
+        mt5AccountNumber: form.mt5AccountNumber,
+        mt5Password: form.mt5Password,
+        mt5Server: form.mt5Server,
+        phase: form.phase,
+      });
+      router.push('/dashboard/client/onboarding/review');
+    } catch (err: any) {
+      setError(err.message || 'Failed to save prop firm account');
       setIsLoading(false);
     }
   };
 
-  const handleBack = () => {
-    router.push('/dashboard/client/onboarding/broker');
-  };
-
-  const handleFtmoAlertClose = () => {
-    setShowFtmoAlert(false);
-  };
-
-  const handleFtmoAlertContinue = () => {
-    setShowFtmoAlert(false);
-  };
-
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl sm:text-3xl font-bold text-foreground flex items-center gap-3">
-          <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-lg bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
-            <Building className="h-4 w-4 sm:h-5 sm:w-5 text-purple-600 dark:text-purple-400" />
-          </div>
-          Prop Firm Configuration
-        </h1>
-        <p className="text-muted-foreground mt-2 text-sm sm:text-base">
-          Set up your proprietary trading firm account
+    <div className="mx-auto max-w-3xl space-y-8">
+      <div className="animate-fade-in-up">
+        <p className="eyebrow">Onboarding</p>
+        <h1 className="page-title">Prop Firm Account</h1>
+        <p className="page-subtitle">
+          Your prop firm MT5 credentials. When your challenge cycle changes you can register the
+          new account from Settings.
         </p>
       </div>
 
-      {/* Progress */}
-      <div className="bg-muted/50 rounded-lg p-3 sm:p-4">
-        <div className="flex items-center justify-start sm:justify-center overflow-x-auto">
-          <div className="flex items-center gap-2 sm:gap-4 min-w-max px-2 sm:px-0">
-            <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
-              <div className="h-6 w-6 sm:h-8 sm:w-8 rounded-full bg-muted text-muted-foreground flex items-center justify-center text-xs sm:text-sm font-semibold">
-                1
-              </div>
-              <span className="text-xs sm:text-sm text-muted-foreground whitespace-nowrap">VPS</span>
-            </div>
-            <div className="h-1 w-8 sm:w-16 bg-primary flex-shrink-0" />
-            <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
-              <div className="h-6 w-6 sm:h-8 sm:w-8 rounded-full bg-muted text-muted-foreground flex items-center justify-center text-xs sm:text-sm font-semibold">
-                2
-              </div>
-              <span className="text-xs sm:text-sm text-muted-foreground whitespace-nowrap">Broker</span>
-            </div>
-            <div className="h-1 w-8 sm:w-16 bg-primary flex-shrink-0" />
-            <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
-              <div className="h-6 w-6 sm:h-8 sm:w-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs sm:text-sm font-semibold">
-                3
-              </div>
-              <span className="text-xs sm:text-sm font-medium whitespace-nowrap">Prop Firm</span>
-            </div>
-            <div className="h-1 w-8 sm:w-16 bg-muted flex-shrink-0" />
-            <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
-              <div className="h-6 w-6 sm:h-8 sm:w-8 rounded-full bg-muted text-muted-foreground flex items-center justify-center text-xs sm:text-sm font-semibold">
-                4
-              </div>
-              <span className="text-xs sm:text-sm text-muted-foreground whitespace-nowrap">Payment</span>
-            </div>
-            <div className="h-1 w-8 sm:w-16 bg-muted flex-shrink-0" />
-            <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
-              <div className="h-6 w-6 sm:h-8 sm:w-8 rounded-full bg-muted text-muted-foreground flex items-center justify-center text-xs sm:text-sm font-semibold">
-                5
-              </div>
-              <span className="text-xs sm:text-sm text-muted-foreground whitespace-nowrap">Review</span>
-            </div>
-          </div>
-        </div>
+      <div className="animate-fade-in-up stagger-1">
+        <OnboardingStepper current="prop" completed={completedSteps} />
       </div>
 
-      {/* Form */}
-      <Card>
+      {existing && (
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-success/25 bg-success/10 p-4 text-sm font-medium text-success">
+          <div className="flex items-center gap-3">
+            <Check className="h-5 w-5 shrink-0" />
+            <span>
+              Prop account saved: {existing.firmName} (account{' '}
+              <span className="tabular-nums">{existing.mt5AccountNumber}</span>). Submitting again
+              archives it and registers the new one.
+            </span>
+          </div>
+          <Button size="sm" variant="outline" onClick={() => router.push('/dashboard/client/onboarding/review')}>
+            Skip
+          </Button>
+        </div>
+      )}
+
+      {error && (
+        <div className="flex items-center gap-3 rounded-xl border border-destructive/20 bg-destructive/10 p-4 text-sm font-medium text-destructive">
+          <AlertCircle className="h-5 w-5 shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
+
+      <Card className="animate-fade-in-up stagger-2">
         <CardHeader>
-          <CardTitle>Prop Firm Details</CardTitle>
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <Building className="h-[18px] w-[18px]" aria-hidden="true" />
+            </div>
+            <CardTitle className="font-display text-lg">Prop Firm MT5 Credentials</CardTitle>
+          </div>
+          <CardDescription>All fields marked * are required</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="prop_firm_name">Prop Firm Name *</Label>
+                <Label htmlFor="firmName" className="text-sm font-medium">Prop Firm Name *</Label>
                 <Input
-                  id="prop_firm_name"
-                  type="text"
-                  placeholder="e.g., FTMO, MyForexFunds"
-                  value={formData.prop_firm_name}
-                  onChange={(e) => handleInputChange('prop_firm_name', e.target.value)}
-                  required
+                  id="firmName"
+                  className="h-10 rounded-xl"
+                  placeholder="e.g. FTMO"
+                  value={form.firmName}
+                  onChange={handleChange('firmName')}
+                  disabled={isLoading}
                 />
               </div>
-
               <div className="space-y-2">
-                <Label htmlFor="phase">Phase *</Label>
-                <Select value={formData.phase} onValueChange={(value) => handleInputChange('phase', value)}>
-                  <SelectTrigger>
+                <Label htmlFor="mt5Server" className="text-sm font-medium">MT5 Server *</Label>
+                <Input
+                  id="mt5Server"
+                  className="h-10 rounded-xl"
+                  placeholder="e.g. FTMO-Server"
+                  value={form.mt5Server}
+                  onChange={handleChange('mt5Server')}
+                  disabled={isLoading}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="mt5AccountNumber" className="text-sm font-medium">MT5 Account Number *</Label>
+                <Input
+                  id="mt5AccountNumber"
+                  className="h-10 rounded-xl"
+                  placeholder="e.g. 7654321"
+                  value={form.mt5AccountNumber}
+                  onChange={handleChange('mt5AccountNumber')}
+                  disabled={isLoading}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="mt5Password" className="text-sm font-medium">MT5 Password *</Label>
+                <Input
+                  id="mt5Password"
+                  className="h-10 rounded-xl"
+                  type="password"
+                  placeholder="Your MT5 password"
+                  value={form.mt5Password}
+                  onChange={handleChange('mt5Password')}
+                  disabled={isLoading}
+                />
+              </div>
+              <div className="space-y-2 sm:col-span-2">
+                <Label htmlFor="phase" className="text-sm font-medium">Account Phase *</Label>
+                <Select
+                  value={form.phase}
+                  onValueChange={(value: 'CHALLENGE' | 'FUNDED') =>
+                    setForm(prev => ({ ...prev, phase: value }))
+                  }
+                  disabled={isLoading}
+                >
+                  <SelectTrigger id="phase" className="h-10 rounded-xl">
                     <SelectValue placeholder="Select phase" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="challenge">Challenge</SelectItem>
-                    <SelectItem value="funded">Funded</SelectItem>
+                    <SelectItem value="CHALLENGE">Challenge</SelectItem>
+                    <SelectItem value="FUNDED">Funded</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="mt5_account_number">MT5 Account Number *</Label>
-                <Input
-                  id="mt5_account_number"
-                  type="text"
-                  placeholder="123456789"
-                  value={formData.mt5_account_number}
-                  onChange={(e) => handleInputChange('mt5_account_number', e.target.value)}
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="mt5_password">MT5 Password *</Label>
-                <Input
-                  id="mt5_password"
-                  type="password"
-                  placeholder="Enter MT5 password"
-                  value={formData.mt5_password}
-                  onChange={(e) => handleInputChange('mt5_password', e.target.value)}
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="mt5_server">MT5 Server *</Label>
-                <Input
-                  id="mt5_server"
-                  type="text"
-                  placeholder="e.g., MetaQuotes-Demo"
-                  value={formData.mt5_server}
-                  onChange={(e) => handleInputChange('mt5_server', e.target.value)}
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="prop_firm_password">Prop Firm Password (Optional)</Label>
-                <Input
-                  id="prop_firm_password"
-                  type="password"
-                  placeholder="Enter prop firm password"
-                  value={formData.prop_firm_password}
-                  onChange={(e) => handleInputChange('prop_firm_password', e.target.value)}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="ftmo_credit_detail">FTMO Credit Detail</Label>
-                <Input
-                  id="ftmo_credit_detail"
-                  type="text"
-                  placeholder="Enter FTMO credit detail"
-                  value={formData.ftmo_credit_detail || ''}
-                  onChange={(e) => handleInputChange('ftmo_credit_detail', e.target.value)}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="ftmo_account_detail">FTMO Account Detail</Label>
-                <Input
-                  id="ftmo_account_detail"
-                  type="text"
-                  placeholder="Enter FTMO account detail"
-                  value={formData.ftmo_account_detail || ''}
-                  onChange={(e) => handleInputChange('ftmo_account_detail', e.target.value)}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="ftmo_user_name">FTMO User Name</Label>
-                <Input
-                  id="ftmo_user_name"
-                  type="text"
-                  placeholder="Enter FTMO user name"
-                  value={formData.ftmo_user_name || ''}
-                  onChange={(e) => handleInputChange('ftmo_user_name', e.target.value)}
-                />
-              </div>
             </div>
 
-            {/* Navigation */}
-            <div className="flex justify-between pt-6 border-t border-border">
+            <div className="flex justify-between pt-2">
               <Button
                 type="button"
                 variant="outline"
-                onClick={handleBack}
+                onClick={() => router.push('/dashboard/client/onboarding/broker')}
                 disabled={isLoading}
-                className="gap-2"
               >
-                <ChevronLeft className="h-4 w-4" /> Back
+                Back
               </Button>
-              <Button
-                type="submit"
-                disabled={isLoading || !formData.prop_firm_name || !formData.mt5_account_number || !formData.mt5_password || !formData.mt5_server}
-                className="gap-2"
-              >
-                {isLoading ? 'Saving...' : 'Next'} <ChevronRight className="h-4 w-4" />
+              <Button type="submit" disabled={isLoading}>
+                {isLoading ? 'Saving...' : 'Save & Continue'}
               </Button>
             </div>
           </form>
         </CardContent>
       </Card>
-
-      {/* FTMO Alert */}
-      <FtmoAlert
-        isOpen={showFtmoAlert}
-        onClose={handleFtmoAlertClose}
-        onContinue={handleFtmoAlertContinue}
-      />
     </div>
   );
 }

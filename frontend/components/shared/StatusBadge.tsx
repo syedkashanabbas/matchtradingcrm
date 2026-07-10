@@ -1,6 +1,6 @@
-import type { UserStatus, ApiKeyStatus, AccountStatus, SubscriptionStatus } from '@/lib/types';
+import type { UserStatus, AccountStatus, SubscriptionStatus } from '@/lib/types';
 
-type Status = UserStatus | ApiKeyStatus | AccountStatus | SubscriptionStatus;
+type Status = UserStatus | AccountStatus | SubscriptionStatus;
 
 interface StatusBadgeProps {
   status: Status;
@@ -27,12 +27,6 @@ export function StatusBadge({ status, variant = 'default' }: StatusBadgeProps) {
           bg: variant === 'default' ? 'bg-amber-50 dark:bg-amber-900/20' : 'bg-transparent',
           text: 'text-amber-700 dark:text-amber-400',
           border: variant === 'default' ? 'border-amber-200 dark:border-amber-800' : 'border-amber-300 dark:border-amber-600',
-        };
-      case 'revoked':
-        return {
-          bg: variant === 'default' ? 'bg-gray-50 dark:bg-gray-900/20' : 'bg-transparent',
-          text: 'text-gray-700 dark:text-gray-400',
-          border: variant === 'default' ? 'border-gray-200 dark:border-gray-800' : 'border-gray-300 dark:border-gray-600',
         };
       case 'inactive':
         return {
@@ -64,7 +58,7 @@ export function StatusBadge({ status, variant = 'default' }: StatusBadgeProps) {
     >
       <span className={`h-2 w-2 rounded-full ${
         status === 'active' ? 'bg-emerald-600 dark:bg-emerald-400' :
-        status === 'suspended' || status === 'revoked' || status === 'overdue' ? 'bg-red-600 dark:bg-red-400' :
+        status === 'suspended' || status === 'overdue' ? 'bg-red-600 dark:bg-red-400' :
         status === 'pending' ? 'bg-amber-600 dark:bg-amber-400' :
         'bg-gray-600 dark:bg-gray-400'
       }`} />

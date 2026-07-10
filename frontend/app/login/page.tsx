@@ -3,8 +3,8 @@ import { AuthLayout } from '@/components/auth/AuthLayout';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Sign In - MatchTrading',
-  description: 'Sign in to your MatchTrading account',
+  title: 'Sign In - EIDOS',
+  description: 'Sign in to your EIDOS account',
 };
 
 export default function LoginPage() {

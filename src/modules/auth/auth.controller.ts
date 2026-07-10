@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
-import { loginUser, registerUser, requestPasswordReset, verifyOTP, resetPassword as resetUserPassword } from "./auth.service";
-import { loginSchema, registerSchema, forgotPasswordSchema, verifyOtpSchema, resetPasswordSchema } from "./auth.validation";
+import { loginUser, registerUser, requestPasswordReset, verifyOTP, resetPassword as resetUserPassword, refreshAccessToken } from "./auth.service";
+import { loginSchema, registerSchema, forgotPasswordSchema, verifyOtpSchema, resetPasswordSchema, refreshSchema } from "./auth.validation";
 
 export const register = async (req: Request, res: Response) => {
   try {
@@ -34,6 +34,23 @@ export const login = async (req: Request, res: Response) => {
   }
 };
 
+export const refresh = async (req: Request, res: Response) => {
+  try {
+    const data = refreshSchema.parse(req.body);
+    const result = await refreshAccessToken(data.refreshToken);
+
+    res.json({
+      message: "Token refreshed",
+      ...result,
+    });
+  } catch {
+    // Always 401 so the client knows to re-authenticate
+    res.status(401).json({
+      message: "Invalid refresh token",
+    });
+  }
+};
+
 export const forgotPassword = async (req: Request, res: Response) => {
   try {
     const data = forgotPasswordSchema.parse(req.body);
@@ -63,7 +80,7 @@ export const verifyOtp = async (req: Request, res: Response) => {
 export const resetPassword = async (req: Request, res: Response) => {
   try {
     const data = resetPasswordSchema.parse(req.body);
-    const result = await resetUserPassword(data.email, data.newPassword);
+    const result = await resetUserPassword(data.email, data.otp, data.newPassword);
 
     res.json(result);
   } catch (error: any) {

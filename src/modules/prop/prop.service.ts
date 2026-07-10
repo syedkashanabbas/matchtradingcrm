@@ -1,12 +1,15 @@
 import { prisma } from "../../config/prisma";
-import { encryptData, decryptData } from "../../utils/encryption";
-import { PropPhase, ClientStatus } from "@prisma/client";
+import { encryptData, decryptData, maskSecret } from "../../utils/encryption";
+import { PropPhase } from "@prisma/client";
+import { completeStep } from "../onboarding/onboarding.service";
+import { enqueueServiceCommand } from "../provisioning/service-control.service";
 
 export const createPropAccount = async (userId: string, propData: {
   firmName: string;
   mt5AccountNumber: string;
   mt5Password: string;
   mt5Server: string;
+  phase?: "CHALLENGE" | "FUNDED";
   ftmoCreditDetail?: string;
   ftmoAccountDetail?: string;
   ftmoUserName?: string;
@@ -24,7 +27,7 @@ export const createPropAccount = async (userId: string, propData: {
       mt5AccountNumber: propData.mt5AccountNumber,
       mt5Password: encryptedMt5Password,
       mt5Server: propData.mt5Server,
-      phase: PropPhase.CHALLENGE,
+      phase: propData.phase === "FUNDED" ? PropPhase.FUNDED : PropPhase.CHALLENGE,
       isActive: true,
       ftmoCreditDetail: propData.ftmoCreditDetail || null,
       ftmoAccountDetail: propData.ftmoAccountDetail || null,
@@ -33,7 +36,13 @@ export const createPropAccount = async (userId: string, propData: {
   });
 
   // Update user onboarding step
-  await updateUserOnboardingStep(userId, "prop", "COMPLETED");
+  await completeStep(userId, "prop");
+
+  // Post-provisioning rotation: incremental sync to EasierProp (§5.4)
+  const provision = await prisma.easierPropProvision.findUnique({ where: { userId } });
+  if (provision?.status === "COMPLETED") {
+    await enqueueServiceCommand(userId, "SYNC_PROP_ROTATION", { newPropAccountId: propAccount.id }, userId);
+  }
 
   return propAccount;
 };
@@ -50,10 +59,10 @@ export const getPropAccounts = async (userId: string, includeArchived: boolean =
     orderBy: { createdAt: "desc" },
   });
 
-  // Decrypt sensitive data for response
+  // Never return plaintext credentials (D1): passwords are masked.
   return propAccounts.map(account => ({
     ...account,
-    mt5Password: account.mt5Password ? decryptData(account.mt5Password) : null,
+    mt5Password: maskSecret(account.mt5AccountNumber),
   }));
 };
 
@@ -70,10 +79,10 @@ export const getActivePropAccount = async (userId: string) => {
     return null;
   }
 
-  // Decrypt sensitive data
+  // Never return plaintext credentials (D1): password is masked.
   return {
     ...account,
-    mt5Password: account.mt5Password ? decryptData(account.mt5Password) : null,
+    mt5Password: maskSecret(account.mt5AccountNumber),
   };
 };
 
@@ -86,7 +95,26 @@ export const getPropAccount = async (id: string, userId: string) => {
     throw new Error("Prop firm account not found");
   }
 
-  // Decrypt sensitive data
+  // Never return plaintext credentials (D1): password is masked.
+  return {
+    ...account,
+    mt5Password: maskSecret(account.mt5AccountNumber),
+  };
+};
+
+/**
+ * INTERNAL ONLY - returns decrypted credentials for the EasierProp sync and
+ * the audited admin reveal endpoint. Never expose through a client response.
+ */
+export const getPropAccountDecrypted = async (id: string, userId: string) => {
+  const account = await prisma.propAccount.findFirst({
+    where: { id, userId },
+  });
+
+  if (!account) {
+    throw new Error("Prop firm account not found");
+  }
+
   return {
     ...account,
     mt5Password: account.mt5Password ? decryptData(account.mt5Password) : null,
@@ -104,10 +132,19 @@ export const updatePropAccount = async (id: string, userId: string, updateData: 
   ftmoAccountDetail?: string;
   ftmoUserName?: string;
 }) => {
-  // Encrypt sensitive fields if provided
-  const dataToUpdate: any = { ...updateData };
-  
-  if (updateData.mt5Password) {
+  // Whitelist updatable fields (never spread raw input) and encrypt secrets
+  const dataToUpdate: Record<string, unknown> = {};
+  for (const field of ["firmName", "mt5AccountNumber", "mt5Server", "ftmoCreditDetail", "ftmoAccountDetail", "ftmoUserName"] as const) {
+    const value = updateData[field];
+    if (typeof value === "string") dataToUpdate[field] = value;
+  }
+  if (updateData.phase === "CHALLENGE" || updateData.phase === "FUNDED") {
+    dataToUpdate.phase = updateData.phase;
+  }
+  if (typeof updateData.isActive === "boolean") {
+    dataToUpdate.isActive = updateData.isActive;
+  }
+  if (typeof updateData.mt5Password === "string" && updateData.mt5Password) {
     dataToUpdate.mt5Password = encryptData(updateData.mt5Password);
   }
 
@@ -141,7 +178,7 @@ export const archivePropAccount = async (id: string, userId: string) => {
 };
 
 export const validatePropAccount = async (id: string, userId: string) => {
-  const account = await getPropAccount(id, userId);
+  const account = await getPropAccountDecrypted(id, userId);
   
   // Here you would implement actual MT5 connection validation
   // For now, we'll simulate validation
@@ -281,49 +318,6 @@ const simulateMt5Validation = async (server: string, accountNumber: string, pass
     return !!(server && accountNumber && password);
   } catch (error) {
     return false;
-  }
-};
-
-// Helper function to update user onboarding step
-const updateUserOnboardingStep = async (userId: string, stepId: string, status: string) => {
-  await prisma.onboardingStep.upsert({
-    where: {
-      userId_stepId: {
-        userId,
-        stepId,
-      },
-    },
-    update: {
-      status: status as any,
-      completedAt: status === "COMPLETED" ? new Date() : null,
-    },
-    create: {
-      userId,
-      stepId,
-      status: status as any,
-      completedAt: status === "COMPLETED" ? new Date() : null,
-    },
-  });
-
-  // Check if all required steps are completed
-  await checkAndUpdateUserStatus(userId);
-};
-
-const checkAndUpdateUserStatus = async (userId: string) => {
-  const completedSteps = await prisma.onboardingStep.count({
-    where: {
-      userId,
-      status: "COMPLETED",
-    },
-  });
-
-  const requiredSteps = ["payment", "vps", "broker", "prop"];
-  
-  if (completedSteps === requiredSteps.length) {
-    await prisma.user.update({
-      where: { id: userId },
-      data: { status: ClientStatus.ACTIVE },
-    });
   }
 };
 

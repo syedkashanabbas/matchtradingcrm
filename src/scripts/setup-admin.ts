@@ -1,63 +1,48 @@
 import { prisma } from '../config/prisma';
 import bcrypt from 'bcrypt';
 
+/**
+ * Creates or updates the admin user from env (D2).
+ * Usage: ADMIN_EMAIL=... ADMIN_PASSWORD=... npx ts-node src/scripts/setup-admin.ts
+ */
 async function setupAdmin() {
+  const email = process.env.ADMIN_EMAIL;
+  const password = process.env.ADMIN_PASSWORD;
+
+  if (!email || !password) {
+    console.error('❌ ADMIN_EMAIL and ADMIN_PASSWORD env vars are required');
+    process.exit(1);
+  }
+
+  if (password.length < 12) {
+    console.error('❌ ADMIN_PASSWORD must be at least 12 characters');
+    process.exit(1);
+  }
+
   try {
-    // Check if admin user already exists
-    const existingAdmin = await prisma.user.findUnique({
-      where: { email: 'exonomaai@gmail.com' },
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const admin = await prisma.user.upsert({
+      where: { email },
+      update: {
+        role: 'ADMIN',
+        status: 'ACTIVE',
+      },
+      create: {
+        email,
+        password: hashedPassword,
+        firstName: process.env.ADMIN_FIRST_NAME || 'EIDOS',
+        lastName: process.env.ADMIN_LAST_NAME || 'Admin',
+        role: 'ADMIN',
+        status: 'ACTIVE',
+        emailVerified: true,
+      },
     });
 
-    if (existingAdmin) {
-      // Update existing user to admin role
-      const adminUser = await prisma.user.update({
-        where: { email: 'exonomaai@gmail.com' },
-        data: { 
-          role: 'ADMIN',
-          status: 'ACTIVE'
-        },
-      });
-      console.log('✅ Admin user updated:', adminUser.email);
-    } else {
-      // Create admin user
-      const hashedPassword = await bcrypt.hash('admin123$!@#$', 10);
-      const adminUser = await prisma.user.create({
-        data: {
-          email: 'exonomaai@gmail.com',
-          password: hashedPassword,
-          firstName: 'Admin',
-          lastName: 'User',
-          role: 'ADMIN',
-          status: 'ACTIVE',
-        },
-      });
-      console.log('✅ Admin user created:', adminUser.email);
-    }
-
-    // Create a test client user if not exists
-    const existingClient = await prisma.user.findUnique({
-      where: { email: 'test@example.com' },
-    });
-
-    if (!existingClient) {
-      const clientPassword = await bcrypt.hash('password123', 10);
-      const clientUser = await prisma.user.create({
-        data: {
-          email: 'test@example.com',
-          password: clientPassword,
-          firstName: 'Test',
-          lastName: 'Client',
-          role: 'CLIENT',
-          status: 'ACTIVE',
-        },
-      });
-      console.log('✅ Test client user created:', clientUser.email);
-    } else {
-      console.log('✅ Test client user exists:', existingClient.email);
-    }
-
+    console.log('✅ Admin user ready:', admin.email);
   } catch (error) {
     console.error('❌ Setup error:', error);
+    process.exitCode = 1;
   } finally {
     await prisma.$disconnect();
   }

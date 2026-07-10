@@ -3,6 +3,9 @@ import { authenticate } from "../../middleware/auth.middleware";
 import {
   createCheckoutSession,
   getCurrentSubscription,
+  getInvoices,
+  createPortal,
+  getCryptoOrder,
   cancelUserSubscription,
   reactivateUserSubscription,
   getPlans,
@@ -16,16 +19,23 @@ router.get("/plans", getPlans);
 // Apply authentication middleware to remaining routes
 router.use(authenticate);
 
-// Create checkout session
+// Create checkout session (card via Stripe, crypto via CoinGate)
 router.post("/checkout", createCheckoutSession);
 
-// Get current subscription
+// Current subscription
 router.get("/current", getCurrentSubscription);
 
-// Cancel subscription
-router.post("/cancel", cancelUserSubscription);
+// Invoice history (Stripe + crypto orders)
+router.get("/invoices", getInvoices);
 
-// Reactivate subscription
+// Stripe Customer Portal
+router.post("/portal", createPortal);
+
+// Crypto order status (outcome page polling)
+router.get("/crypto-orders/:id", getCryptoOrder);
+
+// Cancel / reactivate
+router.post("/cancel", cancelUserSubscription);
 router.post("/reactivate", reactivateUserSubscription);
 
 export default router;

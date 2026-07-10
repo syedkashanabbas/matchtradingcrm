@@ -28,13 +28,6 @@ export const getOnboardingSteps = async (userId: string): Promise<OnboardingStep
         dependencies: [],
       },
       {
-        stepId: "vps",
-        name: "VPS Configuration",
-        description: "Set up your Virtual Private Server for EA hosting",
-        isRequired: true,
-        dependencies: ["payment"],
-      },
-      {
         stepId: "broker",
         name: "Broker Account",
         description: "Configure your MT5 broker account",
@@ -47,13 +40,6 @@ export const getOnboardingSteps = async (userId: string): Promise<OnboardingStep
         description: "Set up your prop firm trading account",
         isRequired: true,
         dependencies: ["payment"],
-      },
-      {
-        stepId: "setup",
-        name: "Final Setup",
-        description: "Complete your account setup and start trading",
-        isRequired: true,
-        dependencies: ["vps", "broker", "prop"],
       },
     ];
 
@@ -304,19 +290,6 @@ export const validatePaymentStep = async (userId: string): Promise<boolean> => {
   }
 };
 
-export const validateVpsStep = async (userId: string): Promise<boolean> => {
-  try {
-    const vpsConfig = await prisma.vpsConfig.findFirst({
-      where: { userId },
-    });
-
-    return vpsConfig !== null && vpsConfig.status === "active";
-  } catch (error) {
-    console.error("Failed to validate VPS step:", error);
-    return false;
-  }
-};
-
 export const validateBrokerStep = async (userId: string): Promise<boolean> => {
   try {
     const brokerAccount = await prisma.brokerAccount.findFirst({
@@ -345,14 +318,13 @@ export const validatePropStep = async (userId: string): Promise<boolean> => {
 
 export const validateSetupStep = async (userId: string): Promise<boolean> => {
   try {
-    const [paymentValid, vpsValid, brokerValid, propValid] = await Promise.all([
+    const [paymentValid, brokerValid, propValid] = await Promise.all([
       validatePaymentStep(userId),
-      validateVpsStep(userId),
       validateBrokerStep(userId),
       validatePropStep(userId),
     ]);
 
-    return paymentValid && vpsValid && brokerValid && propValid;
+    return paymentValid && brokerValid && propValid;
   } catch (error) {
     console.error("Failed to validate setup step:", error);
     return false;

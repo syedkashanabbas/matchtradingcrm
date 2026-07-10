@@ -30,9 +30,9 @@ export function StatsCard({
   color = 'blue',
 }: StatsCardProps) {
   return (
-    <div className="rounded-2xl border border-border bg-card p-6 shadow-soft-md hover:shadow-soft-lg transition-all duration-300">
+    <div className="rounded-2xl border border-border bg-card p-6 shadow-soft hover-lift animate-fade-in-up">
       <div className="flex items-start justify-between mb-4">
-        <div className={`h-12 w-12 rounded-lg flex items-center justify-center ${colorMap[color]}`}>
+        <div className={`h-11 w-11 rounded-xl flex items-center justify-center ${colorMap[color]}`}>
           {icon}
         </div>
         {trend && (
@@ -48,8 +48,8 @@ export function StatsCard({
           </div>
         )}
       </div>
-      <p className="text-sm text-muted-foreground mb-1">{label}</p>
-      <p className="text-2xl font-bold text-foreground mb-2">{value}</p>
+      <p className="text-sm font-medium text-muted-foreground mb-1">{label}</p>
+      <p className="text-3xl font-bold tracking-tight text-foreground mb-1.5 tabular-nums">{value}</p>
       {subtext && (
         <p className="text-xs text-muted-foreground">{subtext}</p>
       )}

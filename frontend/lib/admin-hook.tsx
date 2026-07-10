@@ -7,17 +7,15 @@ import type { AdminStats, User } from './types';
 export function useAdmin() {
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [users, setUsers] = useState<User[]>([]);
-  const [vpsData, setVpsData] = useState<any[]>([]);
   const [brokersData, setBrokersData] = useState<any[]>([]);
   const [propFirmsData, setPropFirmsData] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const loadAdminData = useCallback(async () => {
     try {
-      const [dashboardResponse, usersResponse, vpsResponse, brokersResponse, propFirmsResponse] = await Promise.all([
+      const [dashboardResponse, usersResponse, brokersResponse, propFirmsResponse] = await Promise.all([
         apiClient.getAdminDashboard(),
         apiClient.getAllUsers(),
-        apiClient.getAllVps(),
         apiClient.getAllBrokers(),
         apiClient.getAllPropFirms(),
       ]);
@@ -30,8 +28,6 @@ export function useAdmin() {
         suspendedUsers: (dashboardResponse as any).data.suspendedUsers || 0,
         totalSubscriptions: (dashboardResponse as any).data.totalSubscriptions || 0,
         activeSubscriptions: (dashboardResponse as any).data.activeSubscriptions || 0,
-        totalVpsConfigs: (dashboardResponse as any).data.totalVpsConfigs || 0,
-        activeVpsConfigs: (dashboardResponse as any).data.activeVpsConfigs || 0,
         totalBrokerAccounts: (dashboardResponse as any).data.totalBrokerAccounts || 0,
         activeBrokerAccounts: (dashboardResponse as any).data.activeBrokerAccounts || 0,
         totalPropAccounts: (dashboardResponse as any).data.totalPropAccounts || 0,
@@ -49,11 +45,11 @@ export function useAdmin() {
         tier: 'Pro', // Default tier
         signupDate: user.createdAt,
         avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.firstName}`,
+        provisioningStatus: user.provisioningStatus ?? 'NOT_STARTED',
       }));
       setUsers(transformedUsers);
 
-      // Set VPS, Brokers, and Prop Firms data
-      setVpsData((vpsResponse as any).data || []);
+      // Set Brokers and Prop Firms data
       setBrokersData((brokersResponse as any).data || []);
       setPropFirmsData((propFirmsResponse as any).data || []);
 
@@ -113,7 +109,6 @@ export function useAdmin() {
   return {
     stats,
     users,
-    vpsData,
     brokersData,
     propFirmsData,
     isLoading,

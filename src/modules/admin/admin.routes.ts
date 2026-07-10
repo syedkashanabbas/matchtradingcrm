@@ -5,24 +5,32 @@ import {
   adminDashboard,
   listUsers,
   changeUserStatus,
-  getAllVps,
   getAllBrokers,
   getAllPropFirms,
-  updateVpsStatus,
   updateBrokerStatus,
   updatePropFirmStatus,
 } from "./admin.controller";
+import { revealCredentials } from "./admin-credentials.controller";
+import { userDetail, listSubscriptions } from "./admin.controller";
 
 const router = Router();
 
 router.get("/dashboard", authenticate, requireAdmin, adminDashboard);
 router.get("/users", authenticate, requireAdmin, listUsers);
+router.get("/users/:id", authenticate, requireAdmin, userDetail);
+router.get("/subscriptions", authenticate, requireAdmin, listSubscriptions);
 router.patch("/users/:id/status", authenticate, requireAdmin, changeUserStatus);
-router.get("/vps", authenticate, requireAdmin, getAllVps);
 router.get("/brokers", authenticate, requireAdmin, getAllBrokers);
 router.get("/prop-firms", authenticate, requireAdmin, getAllPropFirms);
-router.patch("/vps/:id/status", authenticate, requireAdmin, updateVpsStatus);
 router.patch("/brokers/:id/status", authenticate, requireAdmin, updateBrokerStatus);
 router.patch("/prop-firms/:id/status", authenticate, requireAdmin, updatePropFirmStatus);
+
+// On-demand credential viewing, audit-logged (D1)
+router.post(
+  "/users/:userId/credentials/:accountType/:accountId/reveal",
+  authenticate,
+  requireAdmin,
+  revealCredentials
+);
 
 export default router;

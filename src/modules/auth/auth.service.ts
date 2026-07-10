@@ -3,7 +3,13 @@ import jwt from "jsonwebtoken";
 import { prisma } from "../../config/prisma";
 import { env } from "../../config/env-validation";
 import { NetworkService } from "../network/network.service";
-import { sendPasswordResetEmail } from "../../config/email";
+import { sendPasswordResetEmail, sendWelcomeEmail } from "../../config/email";
+
+/** Strips sensitive fields before a user object leaves the API. */
+export const sanitizeUser = <T extends { password?: string }>(user: T) => {
+  const { password, ...safe } = user;
+  return safe;
+};
 
 export const registerUser = async (data: {
   email: string;
@@ -11,6 +17,9 @@ export const registerUser = async (data: {
   firstName: string;
   lastName: string;
   phone: string;
+  country: string;
+  termsAccepted: true;
+  privacyAccepted: true;
   refCode?: string;
 }) => {
   // check existing user
@@ -25,10 +34,9 @@ export const registerUser = async (data: {
   // hash password
   const hashedPassword = await bcrypt.hash(data.password, 10);
 
-  // Check if this is the special admin email
-  const isAdminEmail = data.email === 'exonomaai@gmail.com';
-  
-  // create user
+  // Registration always creates CLIENT users. Admins are created exclusively
+  // via the seed script driven by ADMIN_EMAIL / ADMIN_PASSWORD env vars (D2).
+  const now = new Date();
   const user = await prisma.user.create({
     data: {
       email: data.email,
@@ -36,22 +44,22 @@ export const registerUser = async (data: {
       firstName: data.firstName,
       lastName: data.lastName,
       phone: data.phone,
-      role: isAdminEmail ? 'ADMIN' : 'CLIENT',
-      status: isAdminEmail ? 'ACTIVE' : 'NEW',
+      country: data.country,
+      termsAcceptedAt: now,
+      privacyAcceptedAt: now,
+      role: 'CLIENT',
+      status: 'NEW',
     },
   });
 
-  // Process referral if provided
-  if (!isAdminEmail && data.refCode) {
-    const networkService = new NetworkService(prisma);
-    await networkService.processReferralOnRegistration(user.id, data.refCode);
-  } else if (!isAdminEmail) {
-    // Generate referral code for non-admin users
-    const networkService = new NetworkService(prisma);
-    await networkService.processReferralOnRegistration(user.id);
-  }
+  // Process referral (also generates the user's own referral code)
+  const networkService = new NetworkService(prisma);
+  await networkService.processReferralOnRegistration(user.id, data.refCode);
 
-  return user;
+  // Fire-and-forget welcome email (5.3)
+  sendWelcomeEmail(user.email, user.firstName).catch(() => {});
+
+  return sanitizeUser(user);
 };
 
 export const loginUser = async (data: { email: string; password: string }) => {
@@ -86,8 +94,30 @@ export const loginUser = async (data: { email: string; password: string }) => {
   return {
     accessToken,
     refreshToken,
-    user,
+    user: sanitizeUser(user),
   };
+};
+
+export const refreshAccessToken = async (refreshToken: string) => {
+  let payload: { userId: string };
+  try {
+    payload = jwt.verify(refreshToken, env.JWT_REFRESH_SECRET) as { userId: string };
+  } catch {
+    throw new Error("Invalid refresh token");
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: payload.userId } });
+  if (!user || !user.isActive) {
+    throw new Error("Invalid refresh token");
+  }
+
+  const accessToken = jwt.sign(
+    { userId: user.id, role: user.role },
+    env.JWT_ACCESS_SECRET,
+    { expiresIn: "15m" },
+  );
+
+  return { accessToken, user: sanitizeUser(user) };
 };
 
 export const requestPasswordReset = async (email: string) => {
@@ -100,9 +130,8 @@ export const requestPasswordReset = async (email: string) => {
     throw new Error("Email not found");
   }
 
-  // Generate 6-digit OTP
+  // Generate 6-digit OTP (never logged - it is a credential)
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
-  console.log(`🔢 Generated OTP for ${email}: ${otp}`);
   
   // Set expiry to 10 minutes from now
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
@@ -128,7 +157,7 @@ export const requestPasswordReset = async (email: string) => {
   return { message: "OTP sent to your email" };
 };
 
-export const verifyOTP = async (email: string, otp: string) => {
+const assertValidOtp = async (email: string, otp: string) => {
   const storedOTP = await prisma.passwordResetOTP.findUnique({
     where: { email },
   });
@@ -149,16 +178,22 @@ export const verifyOTP = async (email: string, otp: string) => {
     throw new Error("Invalid OTP");
   }
 
-  // Mark OTP as used
-  await prisma.passwordResetOTP.update({
-    where: { email },
-    data: { isUsed: true },
-  });
+  return storedOTP;
+};
 
+/** Validates the OTP without consuming it (the reset step consumes it). */
+export const verifyOTP = async (email: string, otp: string) => {
+  await assertValidOtp(email, otp);
   return { message: "OTP verified successfully" };
 };
 
-export const resetPassword = async (email: string, newPassword: string) => {
+/**
+ * Resets the password ONLY with a valid, unused, unexpired OTP.
+ * The OTP is consumed here, atomically with the password change.
+ */
+export const resetPassword = async (email: string, otp: string, newPassword: string) => {
+  await assertValidOtp(email, otp);
+
   const user = await prisma.user.findUnique({
     where: { email },
   });
@@ -167,14 +202,18 @@ export const resetPassword = async (email: string, newPassword: string) => {
     throw new Error("User not found");
   }
 
-  // Hash new password
   const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-  // Update user password
-  await prisma.user.update({
-    where: { email },
-    data: { password: hashedPassword },
-  });
+  await prisma.$transaction([
+    prisma.passwordResetOTP.update({
+      where: { email },
+      data: { isUsed: true },
+    }),
+    prisma.user.update({
+      where: { email },
+      data: { password: hashedPassword },
+    }),
+  ]);
 
   return { message: "Password reset successfully" };
 };

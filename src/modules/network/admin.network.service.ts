@@ -1,7 +1,49 @@
 import { PrismaClient } from '@prisma/client';
+import { assertNoSponsorCycle } from '../../utils/network.utils';
 
 export class AdminNetworkService {
   constructor(private prisma: PrismaClient) {}
+
+  /**
+   * Membership management view (spec v1.1 §7.12): non-client collaborators
+   * with their $40 membership payment state and network size.
+   */
+  async getMemberships() {
+    const memberships = await this.prisma.subscription.findMany({
+      where: { plan: 'MEMBERSHIP' },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        user: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            createdAt: true,
+            _count: { select: { referrals: true } },
+          },
+        },
+      },
+    });
+
+    // Latest membership subscription per user
+    const latestByUser = new Map<string, (typeof memberships)[number]>();
+    for (const membership of memberships) {
+      if (!latestByUser.has(membership.userId)) latestByUser.set(membership.userId, membership);
+    }
+
+    return [...latestByUser.values()].map(membership => ({
+      userId: membership.user.id,
+      name: `${membership.user.firstName} ${membership.user.lastName}`,
+      email: membership.user.email,
+      joinedAt: membership.user.createdAt,
+      directReferrals: membership.user._count.referrals,
+      provider: membership.provider,
+      status: membership.status,
+      currentPeriodEnd: membership.currentPeriodEnd,
+      cancelAtPeriodEnd: membership.cancelAtPeriodEnd,
+    }));
+  }
 
   async getOverview() {
     const totalUsers = await this.prisma.user.count();
@@ -339,6 +381,9 @@ export class AdminNetworkService {
       throw new Error('Upline user not found');
     }
 
+    // Anti-cycle validation (spec v1.1 task 4.5)
+    await assertNoSponsorCycle(this.prisma, orphanUserId, uplineUserId);
+
     // Update orphan user
     await this.prisma.user.update({
       where: { id: orphanUserId },
@@ -452,6 +497,9 @@ export class AdminNetworkService {
     if (!newUpline) {
       throw new Error('New upline user not found');
     }
+
+    // Anti-cycle validation (spec v1.1 task 4.5)
+    await assertNoSponsorCycle(this.prisma, userId, newUplineUserId);
 
     const oldUplineUserId = user.referredByUserId;
 
